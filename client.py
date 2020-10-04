@@ -53,6 +53,7 @@ def create_file(filename):
     else:
         print(f"FILE {filename} already exists :(")
 
+
 def put_file(local_filename, dfs_filename):
     '''
     Put local file to DFS
@@ -88,6 +89,64 @@ def put_file(local_filename, dfs_filename):
     else:
         print(f"out of memory")
 
+
+def make_directory(dirname):
+    '''
+    Create an empty directory
+    :param dirname: name for directory to create
+    '''
+    # request namenode to create directory
+    response = requests.post(NAMENODE + '/mkdir', json={'dirname': dirname})
+    # check response
+    if response.status_code // 100 == 2:
+        print(f"directory {dirname} successfully created")
+    else:
+        print(f"directory {dirname} already exists")
+
+
+def read_directory():
+    '''
+    Display the contents of the current directory
+    '''
+    # request namenode for the file list
+    response = requests.get(NAMENODE + '/ls')
+    # check response
+    if response.status_code // 100 == 2:
+        # print contents
+        dirs = response.json()['dirs']
+        files = response.json()['files']
+        print('---------------DIRECTORIES---------------')
+        for dir in dirs:
+            print(dir)
+        print('---------------FILES---------------')
+        for file in files:
+            print(file)
+    else:
+        print("failed to list contents of directory")
+
+
+def change_directory(dirname):
+    response = requests.post(NAMENODE + '/cd', json={'dirname': dirname})
+    # check response
+    if response.status_code // 100 == 2:
+        # obtain the new working directory
+        new_dirname = response.json()['dirname']
+        print(f"current directory is {new_dirname}")
+
+
 #init()
 #create_file("zhopa_1")
-put_file('test.txt', 'test.txt')
+#put_file('test.txt', 'test.txt')
+# make_directory("dir1")
+# make_directory("dir2")
+# make_directory("dir3")
+# make_directory("dir4")
+# create_file('file1')
+# create_file('file2')
+# put_file('some_file.txt', 'file3.txt')
+# read_directory()
+# change_directory('dir3')
+# create_file('file4')
+# put_file('some_file.txt', 'file5')
+# read_directory()
+# change_directory('..')

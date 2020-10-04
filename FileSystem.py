@@ -53,6 +53,9 @@ class FileSystem:
         node.parent = None
         return file
 
+    def create_directory(self, dirname):
+        node = Node(dirname, parent=self.cur_node)
+
     def replicate_on_dead(self, datanode):
         pass
 

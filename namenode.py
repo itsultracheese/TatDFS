@@ -1,6 +1,6 @@
 from flask import Flask, Response, request, jsonify
 import logging
-from anytree import Node, RenderTree
+from anytree import Node, RenderTree, Resolver
 from datetime import datetime
 from threading import Thread
 import os, requests, random, time
@@ -16,15 +16,8 @@ app = Flask(__name__)
 logging.basicConfig(filename='namenode.log', level=logging.DEBUG)
 
 
-
-
 def check_if_file_exists(filename):
-    print(RenderTree(fs.cur_node))
-    print(fs.id)
-    print(f"cur node: {fs.cur_node}")
-    print(f"cur node children {fs.cur_node.children}")
     filenames = [x.name for x in fs.cur_node.children]
-    print(f"filenames: {filenames}")
     return filename in filenames
 
 
@@ -117,8 +110,53 @@ def create():
         if filesize > fs.free_space: # check if there's available space
             return Response("not enough space", 413)
         file = fs.create_file(filename, filesize)
-        print(f"!!! {fs.id}")
         return jsonify({"file": file})
+
+
+@app.route('/mkdir', methods=['POST'])
+def mkdir():
+    # get directory name
+    dirname = request.json['dirname']
+    if check_if_file_exists(dirname):
+        return Response("", 409)
+    else:
+        # add directory to fs tree
+        fs.create_directory(dirname)
+        return Response("", 200)
+
+@app.route('/ls')
+def ls():
+    dirs = []
+    files = []
+    for node in fs.cur_node.children:
+        # check whether file or directory
+        try:
+            _ = node.file
+            files.append(node.name)
+        except Exception as e:
+            dirs.append(node.name)
+    return jsonify({'dirs': dirs, 'files': files})
+
+
+@app.route('/cd', methods=['POST'])
+def cd():
+    # get directory name
+    dirname = request.json['dirname']
+    if dirname == '..':
+        if fs.cur_node.parent:
+            fs.cur_node = fs.cur_node.parent
+            return jsonify({'dirname': fs.cur_node.name})
+        else:
+            return Response('', 404)
+    else:
+        try:
+            r = Resolver('name')
+            node = r.get(fs.cur_node, dirname)
+            fs.cur_node = node
+            return jsonify({'dirname': fs.cur_node.name})
+        except Exception as e:
+            return Response('', 404)
+
 
 if __name__ == '__main__':
     #heartbeat_thread = Thread(target=heartbeat)
