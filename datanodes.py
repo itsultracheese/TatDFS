@@ -40,6 +40,23 @@ def format():
     _, _, free = shutil.disk_usage(CURRENT_DIR)
 
     return jsonify({"free": free})
+    
+
+@app.route("/get", methods=['GET'])
+def get_file():
+    '''
+    Get file from datanode
+    '''
+
+    print("started transmitting file for get_file")
+    file_id = request.json['file_id']
+
+    if os.path.isfile(os.path.join(CURRENT_DIR, str(file_id))):
+        print("file found, sending")
+        return send_file(os.path.join(CURRENT_DIR, str(file_id)))
+    else:
+        print("file is not found")
+        return Response("file doesn't exist in this node", 404)
 
 
 @app.route("/put", methods=['POST'])
