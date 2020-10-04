@@ -91,6 +91,23 @@ def delete():
         return jsonify({"file": file})
 
 
+@app.route('/get', methods=['GET'])
+def get():
+    print("started getting the file in namenode")
+    filename = request.json['filename']
+    print(f"filename = {filename}")
+
+    if check_if_file_exists(filename):
+        print("file exists")
+        file = [node for node in fs.cur_node.children if node.name == filename][0].file
+        print(f"file = {file}")
+        return jsonify({"file": file})
+
+    else:
+        print("file doesn't exist")
+        Response("file doesn't exist", 404)
+
+
 @app.route('/create', methods=['POST'])
 def create():
 

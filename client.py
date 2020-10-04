@@ -53,6 +53,41 @@ def create_file(filename):
     else:
         print(f"FILE {filename} already exists :(")
 
+def get_file(filename):
+    '''
+    Downloads file from dfs to client's local host
+    :param filename: name of the file in dfs
+    '''
+
+    # obtaining the base name
+    filename = os.path.basename(filename)
+
+    response = requests.get(NAMENODE + "/get", json={"filename": filename})
+
+    if response.status_code // 100 == 2:
+        # acquiring the file from the namenode
+        file = response.json()['file']
+        datanodes = file['datanodes']
+        received = False
+        for datanode in datanodes:
+            print(f"requesting the file from datanode {datanode}")
+            response = requests.get(datanode + "/get", json={"file_id": file['id']})
+            if response.status_code // 100 == 2:
+                print(f"file was acquired from {datanode}")
+                received = True
+                open(filename, 'wb').write(response.content)
+                break
+            else:
+                print(f"couldn't acquire the file from {datanode}")
+
+        if received:
+            print("yay, the file was received")
+        else:
+            print("file wasn't received")
+
+    else:
+        print(f"FILE {filename} doesn't exist in current dir")
+
 
 def put_file(local_filename, dfs_filename):
     '''
