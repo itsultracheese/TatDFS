@@ -1,4 +1,4 @@
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, send_file
 import os, shutil, logging
 
 HOST = '0.0.0.0'
@@ -40,7 +40,7 @@ def format():
     _, _, free = shutil.disk_usage(CURRENT_DIR)
 
     return jsonify({"free": free})
-    
+
 
 @app.route("/get", methods=['GET'])
 def get_file():
@@ -80,6 +80,7 @@ def put_file():
         app.logger.info(f"failed to upload file because of {e}")
         return Response("", 400)
 
+
 @app.route("/create", methods=["POST"])
 def create_file():
     '''
@@ -98,7 +99,6 @@ def create_file():
         # if not created append to log, response 400
         app.logger.info(f"failed to create file because of {e}")
         return Response("", 400)
-
 
 
 if __name__ == '__main__':
