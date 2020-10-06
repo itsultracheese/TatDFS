@@ -31,7 +31,7 @@ class FileSystem:
         # choose datanodes for storing and replicating
         datanodes = self.choose_datanodes()
         # create file with info
-        file = {"id": self.id, "datanodes": datanodes, "size": filesize, "created_date": datetime.now(), "last_modified": datetime.now()}
+        file = {"id": self.id, "datanodes": datanodes, "size": filesize, "created_date": datetime.now()}
         # add info about file to info about files in datanodes
         for datanode in datanodes:
             if datanode in self.datanodes_files.keys():

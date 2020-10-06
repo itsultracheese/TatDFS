@@ -16,9 +16,21 @@ app = Flask(__name__)
 logging.basicConfig(filename='namenode.log', level=logging.DEBUG)
 
 
-def check_if_file_exists(filename):
+def check_if_exists(filename):
     filenames = [x.name for x in fs.cur_node.children]
     return filename in filenames
+
+
+def check_if_file_exists(filename):
+    for file in fs.cur_node.children:
+        if file.name == filename:
+            try:
+                file.file
+                return True
+            except Exception as e:
+                return False
+    return False
+
 
 
 def heartbeat():
@@ -134,7 +146,7 @@ def create():
 def mkdir():
     # get directory name
     dirname = request.json['dirname']
-    if check_if_file_exists(dirname):
+    if check_if_exists(dirname):
         return Response("", 409)
     else:
         # add directory to fs tree
@@ -169,10 +181,52 @@ def cd():
         try:
             r = Resolver('name')
             node = r.get(fs.cur_node, dirname)
-            fs.cur_node = node
-            return jsonify({'dirname': fs.cur_node.name})
+            try:
+                _ = node.file
+                return Response('', 418)
+            except Exception as e:
+                fs.cur_node = node
+                return jsonify({'dirname': fs.cur_node.name})
         except Exception as e:
             return Response('', 404)
+
+
+@app.route('/info', methods=['POST'])
+def info():
+    # get file name
+    filename = request.json['filename']
+    try:
+        r = Resolver('name')
+        node = r.get(fs.cur_node, filename)
+        return jsonify({'info': node.file})
+    except Exception as e:
+        return Response('', 404)
+
+
+@app.route('/move', methods=['POST'])
+def move():
+    # get file name
+    filename = request.json['filename']
+    # get path
+    path = request.json['path']
+    if path[0] == '/':
+        path = '/root' + path
+    print(RenderTree(fs.root))
+    if check_if_file_exists(filename):
+        r = Resolver('name')
+        file_node = r.get(fs.cur_node, filename)
+        try:
+            node = r.get(fs.cur_node, path)
+            try:
+                _ = node.file
+                return Response('', 418)
+            except Exception as e:
+                file_node.parent = node
+                print(RenderTree(fs.root))
+                return Response('', 200)
+        except Exception as e:
+            return Response('', 404)
+    return Response('', 404)
 
 
 if __name__ == '__main__':

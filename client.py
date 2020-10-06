@@ -38,11 +38,9 @@ def create_file(filename):
     # request namenode to create file
     response = requests.post(NAMENODE + "/create", json={"filename": filename, 'filesize': 0})
 
-    print(response)
     if response.status_code // 100 == 2:
         # receive file info from namenode
         file = response.json()["file"]
-        print(file)
         # request each datanode to create a file
         for datanode in file['datanodes']:
             resp = requests.post(datanode + "/create", json={"file_id": file['id']})
@@ -70,10 +68,10 @@ def get_file(filename):
         datanodes = file['datanodes']
         received = False
         for datanode in datanodes:
-            print(f"requesting the file from datanode {datanode}")
+            print(f"requesting the file")
             response = requests.get(datanode + "/get", json={"file_id": file['id']})
             if response.status_code // 100 == 2:
-                print(f"file was acquired from {datanode}")
+                print(f"file was acquired")
                 received = True
                 open(filename, 'wb').write(response.content)
                 break
@@ -81,7 +79,7 @@ def get_file(filename):
                 print(f"couldn't acquire the file from {datanode}")
 
         if received:
-            print("yay, the file was received")
+            print(f"the file {filename} was received")
         else:
             print("file wasn't received")
 
@@ -109,7 +107,6 @@ def put_file(local_filename, dfs_filename):
     if response.status_code // 100 == 2:
         # receive file info from namenode
         file = response.json()["file"]
-        print(file)
         # request each datanode to create a file
         for datanode in file['datanodes']:
 
@@ -167,21 +164,45 @@ def change_directory(dirname):
         # obtain the new working directory
         new_dirname = response.json()['dirname']
         print(f"current directory is {new_dirname}")
+    elif response.status_code == 418:
+        print("you cannot change directory to a file")
+    else:
+        print(f"failed to change directory to {dirname}")
 
 
-#init()
-#create_file("zhopa_1")
-#put_file('test.txt', 'test.txt')
-# make_directory("dir1")
-# make_directory("dir2")
-# make_directory("dir3")
-# make_directory("dir4")
-# create_file('file1')
-# create_file('file2')
-# put_file('some_file.txt', 'file3.txt')
-# read_directory()
-# change_directory('dir3')
-# create_file('file4')
-# put_file('some_file.txt', 'file5')
-# read_directory()
-# change_directory('..')
+def file_info(filename):
+    response = requests.post(NAMENODE + '/info', json={'filename': filename})
+    # check response
+    if response.status_code // 100 == 2:
+        file = response.json()['info']
+        print(f"FILE {filename}\nSIZE {file['size'] / 2**10} KB\nCREATED {file['created_date']}\nDATANODES {file['datanodes']}")
+    else:
+        print(f"file {filename} does not exist")
+
+
+def move_file(filename, path):
+
+    if path[-1] == '/' and len(path) != 1:
+        path = path[:-1]
+    response = requests.post(NAMENODE + '/move', json={'filename': filename, 'path': path})
+    # check response
+    if response.status_code // 100 == 2:
+        print(f"file {filename} was successfully moved to {path}")
+    elif response.status_code == 418:
+        print("you cannot move file into file")
+    else:
+        print(f"file {filename} cannot be moved to {path}")
+
+
+init()
+create_file("zhopa_1")
+put_file('some_file.txt', 'test.txt')
+make_directory("dir1")
+make_directory("dir2")
+make_directory("dir3")
+make_directory("dir4")
+change_directory('dir3')
+create_file('file4')
+move_file('file4', '/')
+file_info('test.txt')
+change_directory('..')
