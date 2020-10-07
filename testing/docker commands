@@ -1,0 +1,5 @@
+docker build -t datanode2 .
+docker run --network="host" -t -p 8086:8086 -v datanode2:/app datanode2:latest
+
+docker build -t namenode .
+docker run --network="host" -t -p 8080:8080 -v namenode:/app namenode:latest
