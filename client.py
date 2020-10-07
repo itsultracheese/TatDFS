@@ -121,6 +121,41 @@ def put_file(local_filename, dfs_filename):
     else:
         print(f"out of memory")
 
+def delete_file(filename):
+    '''
+    Deletes file from dfs
+
+    :param filename: name of the file
+    '''
+    print(f"starting deleting file {filename}")
+    # obtaining the base names
+    filename = os.path.basename(filename)
+
+    # request namenode to delete file
+    response = requests.delete(NAMENODE + "/delete", json={"filename": filename})
+
+    if response.status_code // 100 == 2:
+        print("file was found in namenode")
+
+        # acquiring info about file
+        file = response.json()['file']
+
+        print(f"file = {file}")
+
+        # removing file from datanodes
+        for datanode in file['datanodes']:
+            print(f"sending delete request to datanode {datanode}")
+            response = requests.delete(datanode + "/delete", json={"file_id": file['id']})
+
+            if response.status_code // 100 == 2:
+                print(f"file was deleted from datanode {datanode}")
+            else:
+                print(f"file couldn't be deleted from datanode {datanode}")
+
+        print("file was deleted from dfs")
+    else:
+        print(f"FILE {filename} doesn't exist")
+
 
 def make_directory(dirname):
     '''
@@ -196,13 +231,23 @@ def move_file(filename, path):
 
 init()
 create_file("zhopa_1")
-put_file('some_file.txt', 'test.txt')
+put_file('test2.txt', 'test.txt')
 make_directory("dir1")
 make_directory("dir2")
-make_directory("dir3")
-make_directory("dir4")
-change_directory('dir3')
+change_directory('dir2')
 create_file('file4')
-move_file('file4', '/')
-file_info('test.txt')
+read_directory()
+move_file('file4', '/dir1')
+read_directory()
 change_directory('..')
+change_directory("dir1")
+read_directory()
+file_info('file4')
+read_directory()
+delete_file('file4')
+change_directory("..")
+move_file("test.txt", "dir2")
+change_directory("dir2")
+get_file("test.txt")
+delete_file("test.txt")
+read_directory()

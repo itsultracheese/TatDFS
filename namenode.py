@@ -95,12 +95,20 @@ def init():
 
 @app.route('/delete', methods=['DELETE'])
 def delete():
-
     # delete file from FS
-    filename = request.args['filename']
+    print("starting deleting file")
+    filename = request.json['filename']
+    print(f"filename = {filename}")
     if check_if_file_exists(filename):
+        print("file exists")
         file = fs.delete_file(filename)
+        print(f"file = {file}")
         return jsonify({"file": file})
+    else:
+        print("file doesn't exist")
+        return Response("file doesn't exist", 404)
+
+
 
 
 @app.route('/get', methods=['GET'])

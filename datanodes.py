@@ -59,6 +59,23 @@ def get_file():
         return Response("file doesn't exist in this node", 404)
 
 
+@app.route("/delete", methods=['DELETE'])
+def delete_file():
+    print("started deleting file")
+    file_id = str(request.json['file_id'])
+    print(f"id: {file_id}")
+
+    if os.path.isfile(os.path.join(CURRENT_DIR, file_id)):
+        print("file is found")
+        os.unlink(os.path.join(CURRENT_DIR, file_id))
+        print("file is deleted")
+        return Response("file was deleted", 200)
+    else:
+        print("file is not found")
+        return Response("file doesn't exist", 404)
+
+
+
 @app.route("/put", methods=['POST'])
 def put_file():
     '''
