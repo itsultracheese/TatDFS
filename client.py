@@ -17,6 +17,7 @@ def show_help(*_):
         cd <dir>            : change directory\n
         info <file>         : display information about the file\n
         mv <file> <dir>     : move the file in the dfs to another location\n
+        exit                : exit the DFS client
         """)
 
 
@@ -339,10 +340,12 @@ if __name__ == "__main__":
     print("TatDFS client successfully started\nHere is a small help on how to use it")
     show_help()
     while True:
-        args = input("𓆏 ").split()
+        args = input("TatDFS𓆏 ").split()
         if len(args) == 0:
             continue
         command = args[0]
+        if command == "exit":
+            break
         try:
             commands[args[0]](*args)
         except Exception as e:
