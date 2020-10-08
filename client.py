@@ -12,6 +12,7 @@ def show_help(*_):
         get <file>          : download file from the dfs\n
         put <file> <dir>    : upload a file from the host to the dfs\n
         rm <file>           : delete a file from the dfs\n
+        cp <file> <dir>     : copy a file to the other directory\n
         mkdir <dir>         : initialize an empty directory\n
         ls                  : list the contents of the current directory\n
         cd <dir>            : change directory\n
@@ -198,6 +199,21 @@ def delete_file(*arguments):
             print(f"FILE {filename} doesn't exist")
 
 
+def copy_file(*arguments):
+    '''
+    Copies the file from the current directory to somewhere else
+    Name resolution: new filename is filename_copy<num of copy>
+    :param filename: file in the current directory to copy
+    :param dirname: path where to put the file
+    '''
+    if len(arguments) == 3:
+        filename = arguments[1]
+        dirname = arguments[2]
+
+    else:
+        mistake()
+
+
 def make_directory(*arguments):
     '''
     Create an empty directory
@@ -293,6 +309,8 @@ def move_file(*arguments):
             print(f"file {filename} was successfully moved to {path}")
         elif response.status_code == 418:
             print("you cannot move file into file")
+        elif response.status_code == 419:
+            print(f"file {filename} already exists in {path}")
         else:
             print(f"file {filename} cannot be moved to {path}")
     else:
@@ -310,7 +328,8 @@ commands = {
     "ls": read_directory,
     "cd": change_directory,
     "info": file_info,
-    "mv": move_file
+    "mv": move_file,
+    "cp": copy_file
 }
 
 # init()

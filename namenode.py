@@ -219,7 +219,6 @@ def move():
     path = request.json['path']
     if path[0] == '/':
         path = '/root' + path
-    print(RenderTree(fs.root))
     if check_if_file_exists(filename):
         r = Resolver('name')
         file_node = r.get(fs.cur_node, filename)
@@ -229,9 +228,12 @@ def move():
                 _ = node.file
                 return Response('', 418)
             except Exception as e:
-                file_node.parent = node
-                print(RenderTree(fs.root))
-                return Response('', 200)
+                if filename in [x.name for x in node.children]:
+                    return Response('', 419)
+                else:
+                    file_node.parent = node
+                    print(RenderTree(fs.root))
+                    return Response('', 200)
         except Exception as e:
             return Response('', 404)
     return Response('', 404)
