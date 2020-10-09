@@ -62,7 +62,7 @@ def get_file():
         return Response("file doesn't exist in this node", 404)
 
 
-@app.route("copy/existing", methods=['POST'])
+@app.route("/copy/existing", methods=['POST'])
 def copy_existing_file():
     '''
     Makes copy of the existing file in datanode
@@ -85,7 +85,7 @@ def copy_existing_file():
         return Response("file couldn't be copied", 419)
 
 
-@app.route("copy/non-existing", methods=['POST'])
+@app.route("/copy/non-existing", methods=['POST'])
 def copy_non_existing_file():
     '''
     Copying files by obtaining it from the other datanode

@@ -10,6 +10,7 @@ ROOT_DIR = "root"
 HOST = '0.0.0.0'
 PORT = 8080
 DATANODES = ["http://0.0.0.0:8085"]
+#DATANODES = ["http://0.0.0.0:8085", "http://0.0.0.0:8086", "http://0.0.0.0:8087"]
 HEARTBEAT_RATE = 60
 
 app = Flask(__name__)
@@ -137,12 +138,13 @@ def copy():
                 filename = filename + '_copy'
                 count = 1
                 while check_if_exists(filename, new_node_par):
-                    filename = filename + '_copy' + str(count)
+                    filename = filename + str(count)
                     count += 1
-                new_node = fs.create_file(filename, original_node.file['size'])
+                file = fs.create_file(filename, original_node.file['size'])
+                new_node = r.get(fs.cur_node, filename)
                 new_node.parent = new_node_par
                 print(f"file was copied under the filename {filename}")
-                return jsonify({'original': original_node.file, 'copy': new_node.file})
+                return jsonify({'original': original_node.file, 'copy': file})
         except Exception as e:
             print("specified directory does not exist")
             return Response("specified directory does not exist", 404)
