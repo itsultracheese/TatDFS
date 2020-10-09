@@ -92,7 +92,7 @@ def get_replica():
     '''
     print("started acquiring the replica")
     file_id = str(request.json['file_id'])
-    src = str(request.json()['datanode'])
+    src = str(request.json['datanode'])
     print(f"file id: {file_id}")
     print(f"src: {src}")
 

@@ -6,7 +6,7 @@ import os
 ROOT_DIR = "root"
 HOST = '0.0.0.0'
 PORT = 8080
-HEARTBEAT_RATE = 60
+HEARTBEAT_RATE = 30
 
 
 class FileSystem:
@@ -22,7 +22,7 @@ class FileSystem:
         # id of the next file created
         self.id = 0
         # replication factor
-        self.replication = 1
+        self.replication = 2
         # info about files stored in datanodes
         # datanode: array of file ids
         self.datanodes_files = {}
@@ -94,6 +94,7 @@ class FileSystem:
         self.free_space -= filesize
         # create file in FS tree
         node = Node(filename, parent=parent_node, file=file, is_file=True)
+        self.update_needs_replica(node, remove=False)
         return file
 
     def delete_file(self, node):
@@ -107,6 +108,7 @@ class FileSystem:
             except Exception as e:
                 print(f"file with id {id} not found in {datanode}")
         node.parent = None
+        self.update_needs_replica(node, remove=True)
         return file
 
     def create_directory(self, dirname, parent_dir):
@@ -116,6 +118,7 @@ class FileSystem:
         result = []
         for child in node.children:
             if child.is_file:
+                self.update_needs_replica(child, remove=True)
                 result.append(child.file)
             else:
                 result += self.get_all_files_rec(child)
@@ -198,6 +201,7 @@ class FileSystem:
         else:
             fs.live_datanodes.append(datanode)
             fs.dead_datanodes.remove(datanode)
+            fs.datanodes_files[datanode] = []
 
     def replicate_on_dead(self, dead_datanode):
         '''
@@ -207,6 +211,7 @@ class FileSystem:
 
         print(f"started replication on dead {dead_datanode}")
         # ids of file stored in the dead node
+        print(f"datanodes_files: {self.datanodes_files}")
         file_ids = self.datanodes_files[dead_datanode]
 
         for id in file_ids:
@@ -224,19 +229,22 @@ class FileSystem:
                     print(f"\t\tstarted replicating from {datanode}")
                     response = requests.post(new_datanode + '/get-replica', json={'file_id': id, 'datanode': datanode})
                     if response.status_code // 100 == 2:
-                        if datanode in self.datanodes_files.keys():
-                            self.datanodes_files[datanode].append(id)
+                        if new_datanode in self.datanodes_files.keys():
+                            self.datanodes_files[new_datanode].append(id)
                         else:
-                            self.datanodes_files[datanode] = [id]
+                            self.datanodes_files[new_datanode] = [id]
                         print(f"\t\tfile was replicated")
                         break
                     else:
                         print(f"\t\tfile was NOT replicated")
 
+
             file['datanodes'] += new_datanodes  # updating the list of datanodes of the file
+            cur_node.file = file
             print(f"\tupdated file datanodes: {file}")
             self.update_needs_replica(cur_node, remove=False)  # updating needs_replica
             print(f"\tupdated needs_replica: {self.needs_replica}")
+
         self.datanodes_files[dead_datanode] = []
 
 

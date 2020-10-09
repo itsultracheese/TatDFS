@@ -11,7 +11,7 @@ HOST = '0.0.0.0'
 PORT = 8080
 DATANODES = ["http://0.0.0.0:8085"]
 # DATANODES = ["http://0.0.0.0:8085", "http://0.0.0.0:8086", "http://0.0.0.0:8087"]
-HEARTBEAT_RATE = 60
+HEARTBEAT_RATE = 30
 
 app = Flask(__name__)
 logging.basicConfig(filename='namenode.log', level=logging.DEBUG)
@@ -19,21 +19,28 @@ logging.basicConfig(filename='namenode.log', level=logging.DEBUG)
 
 def heartbeat():
     while True:
+        print("started heartbeat")
         # go through each datanode
         new_alive = []  # dead -> alive
         new_dead = []  # alive -> dead
 
         # updating new_dead
         for cur_node in fs.live_datanodes:
-            response = requests.get(cur_node + '/ping')  # pinging current datanode
-            if response.status_code // 100 != 2:
+            try:
+                response = requests.get(cur_node + '/ping')  # pinging current datanode
+                if response.status_code // 100 != 2:
+                    new_dead.append(cur_node)
+            except Exception as e:
                 new_dead.append(cur_node)
 
         # updating new_alive
         for cur_node in fs.dead_datanodes:
-            response = requests.get(cur_node + '/ping')
-            if response.status_code // 100 == 2:
-                new_alive.append(cur_node)
+            try:
+                response = requests.get(cur_node + '/ping')
+                if response.status_code // 100 == 2:
+                    new_alive.append(cur_node)
+            except Exception as e:
+                pass
 
         # resurrecting nodes
         for node in new_alive:
@@ -46,8 +53,11 @@ def heartbeat():
 
         # replicating files from dead datanodes
         for node in new_dead:
+            print(f"replica on dead for {node}")
             fs.replicate_on_dead(node)
 
+        print(f"needs_replica: {fs.needs_replica}")
+        needs_repl = []
         for node in fs.needs_replica.keys():
             file = node.file
             needed = fs.replication - len(file['datanodes'])
@@ -58,12 +68,22 @@ def heartbeat():
                     response = requests.post(new_datanode + '/get-replica',
                                              json={'file_id': file['id'], 'datanode': datanode})
                     if response.status_code // 100 == 2:
+                        if new_datanode in fs.datanodes_files.keys():
+                            fs.datanodes_files[new_datanode].append(file['id'])
+                        else:
+                            fs.datanodes_files[new_datanode] = [file['id']]
                         print(f"file was replicated")
                         file['datanodes'] += [new_datanode]
                         break
                     else:
                         print(f"file was NOT replicated")
-            fs.update_needs_replica(node)
+            node.file = file
+            needs_repl.append(node)
+
+        for node in needs_repl:
+            fs.update_needs_replica(node, remove=False)
+
+        print(f"needs replica: {fs.needs_replica}")
 
         time.sleep(HEARTBEAT_RATE)
 
@@ -326,7 +346,9 @@ def move():
         return Response('', 404)
 
 
+
 if __name__ == '__main__':
-    # heartbeat_thread = Thread(target=heartbeat)
-    # heartbeat_thread.start()
+    heartbeat_thread = Thread(target=heartbeat)
+    heartbeat_thread.start()
     app.run(debug=True, host=HOST, port=PORT)
+    heartbeat_thread.join()
