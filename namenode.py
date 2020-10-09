@@ -142,7 +142,7 @@ def copy():
                 new_node = fs.create_file(filename, original_node.file['size'])
                 new_node.parent = new_node_par
                 print(f"file was copied under the filename {filename}")
-                return jsonify({'original_file': original_node.file, 'copy': new_node.file})
+                return jsonify({'original': original_node.file, 'copy': new_node.file})
         except Exception as e:
             print("specified directory does not exist")
             return Response("specified directory does not exist", 404)
