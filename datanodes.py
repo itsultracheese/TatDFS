@@ -1,5 +1,8 @@
+import logging
+import os, requests
+import shutil
+
 from flask import Flask, Response, jsonify, request, send_file
-import os, shutil, logging
 
 HOST = '0.0.0.0'
 PORT = 8085
@@ -59,6 +62,55 @@ def get_file():
         return Response("file doesn't exist in this node", 404)
 
 
+@app.route("copy/existing", methods=['POST'])
+def copy_existing_file():
+    '''
+    Makes copy of the existing file in datanode
+    '''
+    print("started copying existing file")
+    original_id = str(request.json['original_id'])
+    copy_id = str(request.json['copy_id'])
+    print(f"original id: {original_id}")
+    print(f"copy id: {copy_id}")
+
+    path_original = os.path.join(CURRENT_DIR, original_id)
+    path_copy = os.path.join(CURRENT_DIR, copy_id)
+
+    try:
+        shutil.copyfile(path_original, path_copy)
+        print("file was copied")
+        return Response("file was copied", 200)
+    except Exception as e:
+        print(f"file wasn't copied because of {e}")
+        return Response("file couldn't be copied", 419)
+
+
+@app.route("copy/non-existing", methods=['POST'])
+def copy_non_existing_file():
+    '''
+    Copying files by obtaining it from the other datanode
+    '''
+    print("started copying non-existing file")
+    original_id = str(request.json['original_id'])
+    copy_id = str(request.json['copy_id'])
+    src = str(request.json['datanode'])
+    print(f"original id: {original_id}")
+    print(f"copy id: {copy_id}")
+    print(f"src: {src}")
+
+    path_copy = os.path.join(CURRENT_DIR, copy_id)
+
+    response = requests.get(src + '/get', json={'file_id': original_id})
+
+    if response.status_code // 100 == 2:
+        print(f"file was acquired")
+        open(path_copy, 'wb').write(response.content)
+        return Response("file was copied", 200)
+    else:
+        print(f"couldn't acquire the file from {src}")
+        return Response("file was not copied", 400)
+
+
 @app.route("/delete", methods=['DELETE'])
 def delete_file():
     print("started deleting file")
@@ -73,7 +125,6 @@ def delete_file():
     else:
         print("file is not found")
         return Response("file doesn't exist", 404)
-
 
 
 @app.route("/put", methods=['POST'])

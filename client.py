@@ -212,9 +212,39 @@ def copy_file(*arguments):
         # request namenode to copy file
         response = requests.post(NAMENODE + '/copy', json={'filename': filename, 'dirname': dirname})
         # check response
-        #TODO finish
         if response.status_code // 100 == 2:
-            pass
+            print("namenode was updated")
+            original = response.json()['original']
+            copy = response.json()['copy']
+            print(f"original file: {original}")
+            print(f"copy file: {copy}")
+
+            for datanode_cp in copy['datanodes']:
+                print(f"started copying in {datanode_cp}")
+                if datanode_cp in original['datanodes']:
+                    print("it already contains the file, started copying")
+                    response = requests.post(datanode_cp + "/copy/existing",
+                                             json={"original_id": original['id'], "copy_id": copy['id']})
+
+                    if response.status_code // 100 == 2:
+                        print(f"file was successfully copied to {datanode_cp}")
+                    else:
+                        print(f"file couldn't be copied to {datanode_cp}")
+
+                else:
+                    print("it doesn't contain the file, started copying")
+                    for datanode_orig in original['datanodes']:
+                        response = requests.post(datanode_cp + "/copy/non-existing",
+                                                 json={"original_id": original['id'], "copy_id": copy['id'],
+                                                       "datanode": datanode_orig})
+                        if response.status_code // 100 == 2:
+                            print(f"file was copied from {datanode_orig}")
+                            break
+                        else:
+                            print(f"file couldn't be copied from {datanode_orig}")
+
+            print("finished copying")
+
         else:
             print(f"NAMENODE ERROR {filename} cannot be moved to {dirname}")
 
