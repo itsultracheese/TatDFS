@@ -10,7 +10,7 @@ ROOT_DIR = "root"
 HOST = '0.0.0.0'
 PORT = 8080
 DATANODES = ["http://0.0.0.0:8085"]
-#DATANODES = ["http://0.0.0.0:8085", "http://0.0.0.0:8086", "http://0.0.0.0:8087"]
+# DATANODES = ["http://0.0.0.0:8085", "http://0.0.0.0:8086", "http://0.0.0.0:8087"]
 HEARTBEAT_RATE = 60
 
 app = Flask(__name__)
@@ -20,25 +20,31 @@ logging.basicConfig(filename='namenode.log', level=logging.DEBUG)
 def heartbeat():
     while True:
         # go through each datanode
-        new_alive = [] # from live
-        new_dead = []
+        new_alive = []  # dead -> alive
+        new_dead = []  # alive -> dead
+
+        # updating new_dead
         for cur_node in fs.live_datanodes:
-            response = requests.get(cur_node + '/ping') # pinging current datanode
+            response = requests.get(cur_node + '/ping')  # pinging current datanode
             if response.status_code // 100 != 2:
                 new_dead.append(cur_node)
 
+        # updating new_alive
         for cur_node in fs.dead_datanodes:
             response = requests.get(cur_node + '/ping')
             if response.status_code // 100 == 2:
                 new_alive.append(cur_node)
 
+        # resurrecting nodes
         for node in new_alive:
             fs.protocol_lazarus(node)
 
+        # getting the up to date list of live and dead datanodes
         for node in new_dead:
             fs.live_datanodes.remove(node)
             fs.dead_datanodes.append(node)
 
+        # replicating files from dead datanodes
         for node in new_dead:
             fs.replicate_on_dead(node)
 
@@ -49,12 +55,15 @@ def heartbeat():
             for new_datanode in new_datanodes:
                 for datanode in file['datanodes']:
                     print(f"started replicating from {datanode}")
-                    response = requests.post(new_datanode + '/get-replica', json={'file_id': file['id'], 'datanode': datanode})
+                    response = requests.post(new_datanode + '/get-replica',
+                                             json={'file_id': file['id'], 'datanode': datanode})
                     if response.status_code // 100 == 2:
                         print(f"file was replicated")
+                        file['datanodes'] += [new_datanode]
                         break
                     else:
                         print(f"file was NOT replicated")
+            fs.update_needs_replica(node)
 
         time.sleep(HEARTBEAT_RATE)
 
