@@ -209,6 +209,14 @@ def copy_file(*arguments):
     if len(arguments) == 3:
         filename = arguments[1]
         dirname = arguments[2]
+        # request namenode to copy file
+        response = requests.post(NAMENODE + '/copy', json={'filename': filename, 'dirname': dirname})
+        # check response
+        #TODO finish
+        if response.status_code // 100 == 2:
+            pass
+        else:
+            print(f"NAMENODE ERROR {filename} cannot be moved to {dirname}")
 
     else:
         mistake()

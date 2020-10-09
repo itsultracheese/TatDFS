@@ -21,6 +21,16 @@ def check_if_exists(filename):
     return filename in filenames
 
 
+def check_if_dir_exists(dirname):
+    for file in fs.cur_node.children:
+        if file.name == dirname:
+            try:
+                file.file
+                return False
+            except Exception as e:
+                return True
+
+
 def check_if_file_exists(filename):
     for file in fs.cur_node.children:
         if file.name == filename:
@@ -32,9 +42,7 @@ def check_if_file_exists(filename):
     return False
 
 
-
 def heartbeat():
-
     while True:
         for i in range(len(fs.live_datanodes)):
             response = requests.get(fs.live_datanodes[i] + '/ping')
@@ -52,7 +60,6 @@ def ping():
 
 @app.route('/init')
 def init():
-
     print("starting init in namenode")
 
     # initialize FS
@@ -109,6 +116,11 @@ def delete():
         return Response("file doesn't exist", 404)
 
 
+@app.route('/copy', methods=['POST'])
+def copy():
+    print("started copying file in namenode")
+    filename = request.json['filename']
+    dirname = request.json['dirname']
 
 
 @app.route('/get', methods=['GET'])
@@ -130,7 +142,6 @@ def get():
 
 @app.route('/create', methods=['POST'])
 def create():
-
     # obtain filename
     filename = request.json['filename']
     filesize = 0
@@ -144,7 +155,7 @@ def create():
     # create file, return info about datanodes and id
     else:
         app.logger.info(f"filesize: {filesize}   free_space:{fs.free_space}")
-        if filesize > fs.free_space: # check if there's available space
+        if filesize > fs.free_space:  # check if there's available space
             return Response("not enough space", 413)
         file = fs.create_file(filename, filesize)
         return jsonify({"file": file})
@@ -160,6 +171,7 @@ def mkdir():
         # add directory to fs tree
         fs.create_directory(dirname)
         return Response("", 200)
+
 
 @app.route('/ls')
 def ls():
@@ -240,6 +252,6 @@ def move():
 
 
 if __name__ == '__main__':
-    #heartbeat_thread = Thread(target=heartbeat)
-    #heartbeat_thread.start()
+    # heartbeat_thread = Thread(target=heartbeat)
+    # heartbeat_thread.start()
     app.run(debug=True, host=HOST, port=PORT)
