@@ -50,6 +50,13 @@ class FileSystem:
         node = [x for x in self.cur_node.children if x.name == filename][0]
         file = node.file
         self.free_space += file['size']
+        id = file['id']
+        datanodes = file['datanodes']
+        for datanode in datanodes:
+            try:
+                self.datanodes_files[datanode].remove(id)
+            except Exception as e:
+                print(f"file with id {id} not found in {datanode}")
         node.parent = None
         return file
 
