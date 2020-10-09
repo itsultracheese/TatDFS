@@ -85,6 +85,30 @@ def copy_existing_file():
         return Response("file couldn't be copied", 419)
 
 
+@app.route('/get-replica', methods=['POST'])
+def get_replica():
+    '''
+    Getting replica of the file from the other datanode
+    '''
+    print("started acquiring the replica")
+    file_id = str(request.json['file_id'])
+    src = str(request.json()['datanode'])
+    print(f"file id: {file_id}")
+    print(f"src: {src}")
+
+    path = os.path.join(CURRENT_DIR, file_id)
+
+    response = requests.get(src + '/get', json={'file_id': file_id})
+
+    if response.status_code // 100 == 2:
+        print(f"file was acquired")
+        open(path, 'wb').write(response.content)
+        return Response("file was replicated", 200)
+    else:
+        print(f"couldn't acquire the file from {src}")
+        return Response("file was not replicated", 400)
+
+
 @app.route("/copy/non-existing", methods=['POST'])
 def copy_non_existing_file():
     '''

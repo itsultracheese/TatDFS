@@ -45,12 +45,43 @@ def check_if_file_exists(filename, node):
 
 def heartbeat():
     while True:
-        for i in range(len(fs.live_datanodes)):
-            response = requests.get(fs.live_datanodes[i] + '/ping')
+        # go through each datanode
+        new_alive = [] # from live
+        new_dead = []
+        for cur_node in fs.live_datanodes:
+            response = requests.get(cur_node + '/ping') # pinging current datanode
             if response.status_code // 100 != 2:
-                app.logger.info(f"datanode {fs.live_datanodes[i]} is dead")
-                fs.replicate_on_dead(fs.live_datanodes[i])
-                fs.live_datanodes.pop(i)
+                new_dead.append(cur_node)
+
+        for cur_node in fs.dead_datanodes:
+            response = requests.get(cur_node + '/ping')
+            if response.status_code // 100 == 2:
+                new_alive.append(cur_node)
+
+        for node in new_alive:
+            fs.protocol_lazarus(node)
+
+        for node in new_dead:
+            fs.live_datanodes.remove(node)
+            fs.dead_datanodes.append(node)
+
+        for node in new_dead:
+            fs.replicate_on_dead(node)
+
+        for node in fs.needs_replica.keys():
+            file = node.file
+            needed = fs.replication - len(file['datanodes'])
+            new_datanodes = fs.choose_datanodes(n=needed, exclude=file['datanodes'])
+            for new_datanode in new_datanodes:
+                for datanode in file['datanodes']:
+                    print(f"started replicating from {datanode}")
+                    response = requests.post(new_datanode + '/get-replica', json={'file_id': file['id'], 'datanode': datanode})
+                    if response.status_code // 100 == 2:
+                        print(f"file was replicated")
+                        break
+                    else:
+                        print(f"file was NOT replicated")
+
         time.sleep(HEARTBEAT_RATE)
 
 

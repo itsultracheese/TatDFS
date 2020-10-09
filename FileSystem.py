@@ -1,11 +1,12 @@
 from anytree import Node, RenderTree, Resolver
-import random
-from datetime import  datetime
+import random, requests
+from datetime import datetime
 
 ROOT_DIR = "root"
 HOST = '0.0.0.0'
 PORT = 8080
 HEARTBEAT_RATE = 60
+
 
 class FileSystem:
     def __init__(self):
@@ -14,7 +15,9 @@ class FileSystem:
         self.cur_dir = ROOT_DIR
         # current directory
         self.cur_node = self.root
-        self.live_datanodes = []
+        self.live_datanodes = []  # store alive datanodes
+        self.dead_datanodes = []  # store dead datanodes
+        self.needs_replica = {}  # store files that need replicas in form of tuple (node with file, # of needed replicas)
         # id of the next file created
         self.id = 0
         # replication factor
@@ -35,9 +38,43 @@ class FileSystem:
                 count += 1
         return dirname
 
-    def choose_datanodes(self):
+    def update_needs_replica(self, node, remove):
+        '''
+        recalculated needs_replica for the given node
+        :param node: node
+        :param remove: if true, the node is removed from needs_replica
+        :return:
+        '''
+        if remove:
+            if node in self.needs_replica.keys():
+                self.needs_replica.pop(node)
+            return
+
+        cur_replica = len(node.file['datanodes'])  # obtaining current replica
+        # updating needs_replica
+        if cur_replica < self.replication:
+            self.needs_replica[node] = self.replication - cur_replica
+        elif cur_replica == self.replication:
+            if node in self.needs_replica.keys():
+                self.needs_replica.pop(node)
+
+    def choose_datanodes(self, n=None, exclude=None):
+        '''
+
+        :param n: number of datanodes to return, equals to self.replication if not stated
+        :param exclude: listed datanodes won't present in the returned list
+        :return: a list of datanodes of size min(n, len(live_datanodes))
+        '''
         # choose random datanodes to store the file
-        return random.sample(self.live_datanodes, self.replication)
+        amount = self.replication
+        if n:
+            amount = n
+
+        if exclude:
+            subset = [node for node in self.live_datanodes if node not in exclude]
+            return random.sample(subset, min(amount, len(subset)))
+        else:
+            return random.sample(self.live_datanodes, min(amount, len(self.live_datanodes)))
 
     def create_file(self, filename, filesize=0):
         # choose datanodes for storing and replicating
@@ -84,7 +121,66 @@ class FileSystem:
                 result += self.get_all_files_rec(child)
         return result
 
-    def replicate_on_dead(self, datanode):
+    def get_filenode_by_id(self, id):
+        '''
+        Traverse the tree and return the node storing the file with corresponding id
+        :param id: int
+        :return: node
+        '''
+
+        # TODO implement this function
+        return self.cur_node
+
+    def protocol_lazarus(self, datanode):
+        '''
+        Resurrection of the node
+        :param node:
+        '''
+
+        response = requests.get(datanode + '/format')
+
+        if response.status_code // 100 != 2:
+            print(f"couldn't resurrect datanode: {datanode}")
+        else:
+            fs.live_datanodes.append(datanode)
+            fs.dead_datanodes.remove(datanode)
+
+    def replicate_on_dead(self, dead_datanode):
+        '''
+        Replicating files from dead datanode to alive
+        :param index: index of the dead datanode in self.live_datanodes
+        '''
+
+        print(f"started replication on dead {dead_datanode}")
+        # ids of file stored in the dead node
+        file_ids = self.datanodes_files[dead_datanode]
+
+        for id in file_ids:
+            print(f"\tprocessing file with id: {id}")
+            cur_node = self.get_filenode_by_id(id) # node storing the file
+            file = cur_node.file # file itself
+            print(f"\tfile: {file}")
+            file['datanodes'].remove(dead_datanode) # removing the dead node from datanodes list of the file
+            new_datanodes = self.choose_datanodes(n=1, exclude=file['datanodes']) # acquiring new datanode
+            print(f"\tnew_datanodes: {new_datanodes}")
+            if len(new_datanodes) > 0:
+                print("\tavailable datanode was found")
+                new_datanode = new_datanodes[0]
+                for datanode in file['datanodes']:
+                    print(f"\t\tstarted replicating from {datanode}")
+                    response = requests.post(new_datanode + '/get-replica', json={'file_id': id, 'datanode': datanode})
+                    if response.status_code // 100 == 2:
+                        print(f"\t\tfile was replicated")
+                        break
+                    else:
+                        print(f"\t\tfile was NOT replicated")
+
+
+            file['datanodes'] += new_datanodes  # updating the list of datanodes of the file
+            print(f"\tupdated file datanodes: {file}")
+            self.update_needs_replica(cur_node, remove=False)  # updating needs_replica
+            print(f"\tupdated needs_replica: {self.needs_replica}")
+
         pass
 
 
