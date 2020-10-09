@@ -55,7 +55,7 @@ class FileSystem:
         # decrement free space
         self.free_space -= filesize
         # create file in FS tree
-        node = Node(filename, parent=self.cur_node, file=file)
+        node = Node(filename, parent=self.cur_node, file=file, is_file=True)
         return file
 
     def delete_file(self, filename):
@@ -73,7 +73,16 @@ class FileSystem:
         return file
 
     def create_directory(self, dirname):
-        node = Node(dirname, parent=self.cur_node)
+        node = Node(dirname, parent=self.cur_node, is_file=False)
+
+    def get_all_files_rec(self, node):
+        result = []
+        for child in node.children:
+            if child.is_file:
+                result.append(child.file)
+            else:
+                result += self.get_all_files_rec(child)
+        return result
 
     def replicate_on_dead(self, datanode):
         pass

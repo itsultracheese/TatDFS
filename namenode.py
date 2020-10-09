@@ -87,7 +87,7 @@ def init():
                 fs.free_space = min(free, fs.free_space)
 
         else:
-            print("could'nt ping that boi")
+            print("couldn't ping that boi")
             app.logger.info(f"couldn't ping datanode: {datanode}")
 
     # check whether the FS initialized successfully
@@ -115,6 +115,45 @@ def delete():
     else:
         print("file doesn't exist")
         return Response("file doesn't exist", 404)
+
+@app.route('/delete/dir-notsure', methods=['DELETE'])
+def delete_dir_notsure():
+    print("starting deleting dir")
+    dirname = request.json['dirname']
+    print(f"dirname: {dirname}")
+
+    if check_if_dir_exists(dirname, fs.cur_node):
+        r = Resolver("name")
+        dir_node = r.get(fs.cur_node, dirname)
+        children = [x for x in dir_node.children]
+        if len(children) == 0:
+            dir_node.parent = None
+            print("directory empty, was removed successfully")
+            return jsonify({"empty": True})
+        else:
+            print("directory not empty")
+            return jsonify({"empty": False})
+    else:
+        print("dir doesn't exist")
+        return Response("dir doesn't exist", 404)
+
+@app.route('/delete/dir-sure', methods=['DELETE'])
+def delete_dir_sure():
+    print("starting deleting dir")
+    dirname = request.json['dirname']
+    print(f"dirname: {dirname}")
+
+    if check_if_dir_exists(dirname, fs.cur_node):
+        r = Resolver("name")
+        dir_node = r.get(fs.cur_node, dirname)
+        files = fs.get_all_files_rec(dir_node)
+        dir_node.parent = None
+        return jsonify({"files": files})
+
+    else:
+        print("dir doesn't exist")
+        return Response("dir doesn't exist", 404)
+
 
 
 @app.route('/copy', methods=['POST'])
@@ -223,12 +262,15 @@ def cd():
     try:
         r = Resolver('name')
         node = r.get(fs.cur_node, dirname)
-        try:
-            _ = node.file
-            return Response('', 418)
-        except Exception as e:
-            fs.cur_node = node
-            return jsonify({'dirname': fs.cur_node.name, 'cur_dir': fs.get_current_dirname()})
+        if node:
+            try:
+                _ = node.file
+                return Response('', 418)
+            except Exception as e:
+                fs.cur_node = node
+                return jsonify({'dirname': fs.cur_node.name, 'cur_dir': fs.get_current_dirname()})
+        else:
+            return Response('', 404)
     except Exception as e:
         return Response('', 404)
 

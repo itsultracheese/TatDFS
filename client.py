@@ -19,6 +19,7 @@ def show_help(*_):
         cd <dir>            : change directory\n
         info <file>         : display information about the file\n
         mv <file> <dir>     : move the file in the dfs to another location\n
+        rmdir <dir>         : delete directory (and its contents)\n
         exit                : exit the DFS client
         """)
 
@@ -252,6 +253,53 @@ def copy_file(*arguments):
     else:
         mistake()
 
+def delete_directory(*arguments):
+    '''
+    Removes the directory
+    '''
+
+    print("started deleting directory")
+
+    if len(arguments) == 2:
+        dirname = arguments[1]
+
+        response = requests.delete(NAMENODE + "/delete/dir-notsure", json={'dirname': dirname})
+
+        if response.status_code // 100 == 2:
+            empty = response.json()['empty']
+            if empty:
+                print("empty dir was deleted")
+            else:
+                print("dir is not empty")
+                while True:
+                    delete = input("are you sure that you want do delete all contents? [y/n]")
+                    if delete == 'y' or delete == 'Y' or delete == 'yes' or delete == 'Yes':
+                        response = requests.delete(NAMENODE + "/delete/dir-sure", json={'dirname': dirname})
+                        # delete from datanodes
+                        if response.status_code // 100 == 2:
+                            files = response.json()['files']
+                            for file in files:
+                                datanodes = file['datanodes']
+                                id = file['id']
+                                for datanode in datanodes:
+                                    response = requests.delete(datanode + '/delete', json={'file_id': id})
+                                    if response.status_code // 100 == 2:
+                                        print(f"{file} was deleted from {datanode}")
+                                    else:
+                                        print(f"{file} was NOT deleted from {datanode}")
+                        else:
+                            print("couldn't delete directory")
+
+                        break
+                    elif delete == 'n' or delete == 'N' or delete == 'no' or delete == 'No':
+                        print("not deleting")
+                        break
+        else:
+            print("NAMENODE ERROR ")
+
+    else:
+        mistake()
+
 
 def make_directory(*arguments):
     '''
@@ -371,7 +419,8 @@ commands = {
     "cd": change_directory,
     "info": file_info,
     "mv": move_file,
-    "cp": copy_file
+    "cp": copy_file,
+    "rmdir": delete_directory
 }
 
 # init()
