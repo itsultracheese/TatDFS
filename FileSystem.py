@@ -164,16 +164,26 @@ class FileSystem:
         except Exception as e:
             return None
 
-
-    def get_filenode_by_id(self, id):
+    def get_filenode_by_id(self, node, id):
         '''
         Traverse the tree and return the node storing the file with corresponding id
         :param id: int
+        :param node: node from where start traversal
         :return: node
         '''
 
-        # TODO implement this function
-        return self.cur_node
+        if node.is_file:
+            if node.file['id'] == id:
+                return node
+            else:
+                return None
+        else:
+            for child in node.children:
+                result = self.get_filenode_by_id(child, id)
+                if result:
+                    return result
+                    break
+        return None
 
     def protocol_lazarus(self, datanode):
         '''
@@ -201,11 +211,11 @@ class FileSystem:
 
         for id in file_ids:
             print(f"\tprocessing file with id: {id}")
-            cur_node = self.get_filenode_by_id(id) # node storing the file
-            file = cur_node.file # file itself
+            cur_node = self.get_filenode_by_id(self.root, id)  # node storing the file
+            file = cur_node.file  # file itself
             print(f"\tfile: {file}")
-            file['datanodes'].remove(dead_datanode) # removing the dead node from datanodes list of the file
-            new_datanodes = self.choose_datanodes(n=1, exclude=file['datanodes']) # acquiring new datanode
+            file['datanodes'].remove(dead_datanode)  # removing the dead node from datanodes list of the file
+            new_datanodes = self.choose_datanodes(n=1, exclude=file['datanodes'])  # acquiring new datanode
             print(f"\tnew_datanodes: {new_datanodes}")
             if len(new_datanodes) > 0:
                 print("\tavailable datanode was found")
@@ -219,12 +229,10 @@ class FileSystem:
                     else:
                         print(f"\t\tfile was NOT replicated")
 
-
             file['datanodes'] += new_datanodes  # updating the list of datanodes of the file
             print(f"\tupdated file datanodes: {file}")
             self.update_needs_replica(cur_node, remove=False)  # updating needs_replica
             print(f"\tupdated needs_replica: {self.needs_replica}")
-
 
 
 fs = FileSystem()
