@@ -1,6 +1,7 @@
 import requests, os
 
 NAMENODE = "http://0.0.0.0:8080"
+CURRENT_DIR = "/"
 
 
 def show_help(*_):
@@ -212,39 +213,9 @@ def copy_file(*arguments):
         # request namenode to copy file
         response = requests.post(NAMENODE + '/copy', json={'filename': filename, 'dirname': dirname})
         # check response
+        #TODO finish
         if response.status_code // 100 == 2:
-            print("namenode was updated")
-            original = response.json()['original']
-            copy = response.json()['copy']
-            print(f"original file: {original}")
-            print(f"copy file: {copy}")
-
-            for datanode_cp in copy['datanodes']:
-                print(f"started copying in {datanode_cp}")
-                if datanode_cp in original['datanodes']:
-                    print("it already contains the file, started copying")
-                    response = requests.post(datanode_cp + "/copy/existing",
-                                             json={"original_id": original['id'], "copy_id": copy['id']})
-
-                    if response.status_code // 100 == 2:
-                        print(f"file was successfully copied to {datanode_cp}")
-                    else:
-                        print(f"file couldn't be copied to {datanode_cp}")
-
-                else:
-                    print("it doesn't contain the file, started copying")
-                    for datanode_orig in original['datanodes']:
-                        response = requests.post(datanode_cp + "/copy/non-existing",
-                                                 json={"original_id": original['id'], "copy_id": copy['id'],
-                                                       "datanode": datanode_orig})
-                        if response.status_code // 100 == 2:
-                            print(f"file was copied from {datanode_orig}")
-                            break
-                        else:
-                            print(f"file couldn't be copied from {datanode_orig}")
-
-            print("finished copying")
-
+            pass
         else:
             print(f"NAMENODE ERROR {filename} cannot be moved to {dirname}")
 
@@ -296,6 +267,8 @@ def change_directory(*arguments):
     Change current working directory
     :param dirname: the directory that we want to make current working
     '''
+    global CURRENT_DIR
+
     if len(arguments) == 2:
         dirname = arguments[1]
         response = requests.post(NAMENODE + '/cd', json={'dirname': dirname})
@@ -303,6 +276,8 @@ def change_directory(*arguments):
         if response.status_code // 100 == 2:
             # obtain the new working directory
             new_dirname = response.json()['dirname']
+            cur_dir = response.json()['cur_dir']
+            CURRENT_DIR = cur_dir
             print(f"current directory is {new_dirname}")
         elif response.status_code == 418:
             print("you cannot change directory to a file")
@@ -339,8 +314,6 @@ def move_file(*arguments):
     if len(arguments) == 3:
         filename = arguments[1]
         path = arguments[2]
-        if path[-1] == '/' and len(path) != 1:
-            path = path[:-1]
         response = requests.post(NAMENODE + '/move', json={'filename': filename, 'path': path})
         # check response
         if response.status_code // 100 == 2:
@@ -353,6 +326,7 @@ def move_file(*arguments):
             print(f"file {filename} cannot be moved to {path}")
     else:
         mistake()
+
 
 # command to functions mapping
 commands = {
@@ -397,7 +371,7 @@ if __name__ == "__main__":
     print("TatDFS client successfully started\nHere is a small help on how to use it")
     show_help()
     while True:
-        args = input("TatDFS𓆏 ").split()
+        args = input("TatDFS𓆏 " + CURRENT_DIR + " $ ").split()
         if len(args) == 0:
             continue
         command = args[0]

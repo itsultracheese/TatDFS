@@ -216,24 +216,19 @@ def ls():
 def cd():
     # get directory name
     dirname = request.json['dirname']
-    if dirname == '..':
-        if fs.cur_node.parent:
-            fs.cur_node = fs.cur_node.parent
-            return jsonify({'dirname': fs.cur_node.name})
-        else:
-            return Response('', 404)
-    else:
+    if dirname[0] == '/':
+        dirname = '/root' + dirname
+    try:
+        r = Resolver('name')
+        node = r.get(fs.cur_node, dirname)
         try:
-            r = Resolver('name')
-            node = r.get(fs.cur_node, dirname)
-            try:
-                _ = node.file
-                return Response('', 418)
-            except Exception as e:
-                fs.cur_node = node
-                return jsonify({'dirname': fs.cur_node.name})
+            _ = node.file
+            return Response('', 418)
         except Exception as e:
-            return Response('', 404)
+            fs.cur_node = node
+            return jsonify({'dirname': fs.cur_node.name, 'cur_dir': fs.get_current_dirname()})
+    except Exception as e:
+        return Response('', 404)
 
 
 @app.route('/info', methods=['POST'])

@@ -23,6 +23,18 @@ class FileSystem:
         # datanode: array of file ids
         self.datanodes_files = {}
 
+    def get_current_dirname(self):
+        dirname = '/'
+        count = 0
+        for node in self.cur_node.path:
+            if count == 0:
+                count += 1
+                continue
+            else:
+                dirname += node.name + '/'
+                count += 1
+        return dirname
+
     def choose_datanodes(self):
         # choose random datanodes to store the file
         return random.sample(self.live_datanodes, self.replication)
