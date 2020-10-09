@@ -1,6 +1,7 @@
 from anytree import Node, RenderTree, Resolver
 import random
 from datetime import  datetime
+import os
 
 ROOT_DIR = "root"
 HOST = '0.0.0.0'
@@ -9,7 +10,7 @@ HEARTBEAT_RATE = 60
 
 class FileSystem:
     def __init__(self):
-        self.root = Node(ROOT_DIR)
+        self.root = Node(ROOT_DIR, is_file=False)
         self.free_space = 1000000000000000000000
         self.cur_dir = ROOT_DIR
         # current directory
@@ -39,7 +40,7 @@ class FileSystem:
         # choose random datanodes to store the file
         return random.sample(self.live_datanodes, self.replication)
 
-    def create_file(self, filename, filesize=0):
+    def create_file(self, filename, parent_node, filesize=0):
         # choose datanodes for storing and replicating
         datanodes = self.choose_datanodes()
         # create file with info
@@ -55,11 +56,10 @@ class FileSystem:
         # decrement free space
         self.free_space -= filesize
         # create file in FS tree
-        node = Node(filename, parent=self.cur_node, file=file, is_file=True)
+        node = Node(filename, parent=parent_node, file=file, is_file=True)
         return file
 
-    def delete_file(self, filename):
-        node = [x for x in self.cur_node.children if x.name == filename][0]
+    def delete_file(self, node):
         file = node.file
         self.free_space += file['size']
         id = file['id']
@@ -72,8 +72,8 @@ class FileSystem:
         node.parent = None
         return file
 
-    def create_directory(self, dirname):
-        node = Node(dirname, parent=self.cur_node, is_file=False)
+    def create_directory(self, dirname, parent_dir):
+        node = Node(dirname, parent=parent_dir, is_file=False)
 
     def get_all_files_rec(self, node):
         result = []
@@ -83,6 +83,49 @@ class FileSystem:
             else:
                 result += self.get_all_files_rec(child)
         return result
+
+    def get_file(self, filename):
+        '''
+        Get the node with the given file
+        :param filename: path to file relative to the current node
+        :return: node with the given file or None
+        '''
+        if filename[0] == '/':
+            filename = '/root' + filename
+        r = Resolver("name")
+        try:
+            node = r.get(self.cur_node, filename)
+            if node:
+                if node.is_file:
+                    return node
+                else:
+                    return None
+            else:
+                return None
+        except Exception as e:
+            return None
+
+    def get_dir(self, dirname):
+        '''
+        Get the node with the given directory
+        :param dirname: path to direcroty relative to the current node
+        :return: node with the given directory or None
+        '''
+        if len(dirname) >= 1:
+            if dirname[0] == '/':
+                dirname = '/root' + dirname
+        r = Resolver("name")
+        try:
+            node = r.get(self.cur_node, dirname)
+            if node:
+                if node.is_file:
+                    return None
+                else:
+                    return node
+            else:
+                return None
+        except Exception as e:
+            return None
 
     def replicate_on_dead(self, datanode):
         pass

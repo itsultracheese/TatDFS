@@ -15,7 +15,7 @@ def show_help(*_):
         rm <file>           : delete a file from the dfs\n
         cp <file> <dir>     : copy a file to the other directory\n
         mkdir <dir>         : initialize an empty directory\n
-        ls                  : list the contents of the current directory\n
+        ls [dir]            : list the contents of the directory (or current directory if no arguments)\n
         cd <dir>            : change directory\n
         info <file>         : display information about the file\n
         mv <file> <dir>     : move the file in the dfs to another location\n
@@ -106,6 +106,7 @@ def get_file(*arguments):
                 if response.status_code // 100 == 2:
                     print(f"file was acquired")
                     received = True
+                    filename = os.path.basename(filename)
                     open(filename, 'wb').write(response.content)
                     break
                 else:
@@ -253,6 +254,7 @@ def copy_file(*arguments):
     else:
         mistake()
 
+
 def delete_directory(*arguments):
     '''
     Removes the directory
@@ -319,25 +321,32 @@ def make_directory(*arguments):
         mistake()
 
 
-def read_directory(*_):
+def read_directory(*arguments):
     '''
     Display the contents of the current directory
     '''
-    # request namenode for the file list
-    response = requests.get(NAMENODE + '/ls')
-    # check response
-    if response.status_code // 100 == 2:
-        # print contents
-        dirs = response.json()['dirs']
-        files = response.json()['files']
-        print('---------------DIRECTORIES---------------')
-        for dir in dirs:
-            print(dir)
-        print('---------------FILES---------------')
-        for file in files:
-            print(file)
+
+    dirname = ''
+    if len(arguments) <= 2:
+        if len(arguments) == 2:
+            dirname = arguments[1]
+        # request namenode for the file list
+        response = requests.get(NAMENODE + '/ls', json={'dirname': dirname})
+        # check response
+        if response.status_code // 100 == 2:
+            # print contents
+            dirs = response.json()['dirs']
+            files = response.json()['files']
+            print('---------------DIRECTORIES---------------')
+            for dir in dirs:
+                print(dir)
+            print('---------------FILES---------------')
+            for file in files:
+                print(file)
+        else:
+            print("failed to list contents of directory")
     else:
-        print("failed to list contents of directory")
+        mistake()
 
 
 def change_directory(*arguments):
