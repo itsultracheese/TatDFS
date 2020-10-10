@@ -18,7 +18,7 @@ class FileSystem:
         self.cur_node = self.root
         self.live_datanodes = []  # store alive datanodes
         self.dead_datanodes = []  # store dead datanodes
-        self.needs_replica = {}  # store files that need replicas in form of tuple (node with file: # of needed replicas)
+        self.needs_replica = {}  # store files that need replicas in dic (node with file: # of needed replicas)
         # id of the next file created
         self.id = 0
         # replication factor
@@ -227,7 +227,12 @@ class FileSystem:
                 new_datanode = new_datanodes[0]
                 for datanode in file['datanodes']:
                     print(f"\t\tstarted replicating from {datanode}")
-                    response = requests.post(new_datanode + '/get-replica', json={'file_id': id, 'datanode': datanode})
+                    try:
+                        response = requests.post(new_datanode + '/get-replica', json={'file_id': id, 'datanode': datanode})
+                    except Exception as e:
+                        print(f"Exception while replicating\n{e}")
+                        continue
+
                     if response.status_code // 100 == 2:
                         if new_datanode in self.datanodes_files.keys():
                             self.datanodes_files[new_datanode].append(id)

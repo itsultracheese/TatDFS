@@ -11,7 +11,7 @@ HOST = '0.0.0.0'
 PORT = 8080
 DATANODES = ["http://0.0.0.0:8085"]
 # DATANODES = ["http://0.0.0.0:8085", "http://0.0.0.0:8086", "http://0.0.0.0:8087"]
-HEARTBEAT_RATE = 30
+HEARTBEAT_RATE = 5
 
 app = Flask(__name__)
 logging.basicConfig(filename='namenode.log', level=logging.DEBUG)
@@ -24,23 +24,29 @@ def heartbeat():
         new_alive = []  # dead -> alive
         new_dead = []  # alive -> dead
 
+        print(f"live_datanodes: {fs.live_datanodes}")
+        print(f"dead datanodes: {fs.dead_datanodes}")
+
         # updating new_dead
         for cur_node in fs.live_datanodes:
             try:
                 response = requests.get(cur_node + '/ping')  # pinging current datanode
                 if response.status_code // 100 != 2:
                     new_dead.append(cur_node)
+                    print(f"new dead: {cur_node}")
             except Exception as e:
                 new_dead.append(cur_node)
+                print(f"new dead: {cur_node}")
 
         # updating new_alive
         for cur_node in fs.dead_datanodes:
             try:
                 response = requests.get(cur_node + '/ping')
                 if response.status_code // 100 == 2:
+                    print(f"new alive: {cur_node}")
                     new_alive.append(cur_node)
             except Exception as e:
-                pass
+                print(f"FAILED to PING datanode {cur_node}")
 
         # resurrecting nodes
         for node in new_alive:
@@ -65,8 +71,13 @@ def heartbeat():
             for new_datanode in new_datanodes:
                 for datanode in file['datanodes']:
                     print(f"started replicating from {datanode}")
-                    response = requests.post(new_datanode + '/get-replica',
-                                             json={'file_id': file['id'], 'datanode': datanode})
+                    try:
+                        response = requests.post(new_datanode + '/get-replica',
+                                                 json={'file_id': file['id'], 'datanode': datanode})
+                    except Exception as e:
+                        print("couldn't replicate")
+                        continue
+
                     if response.status_code // 100 == 2:
                         if new_datanode in fs.datanodes_files.keys():
                             fs.datanodes_files[new_datanode].append(file['id'])
@@ -95,44 +106,63 @@ def ping():
 
 @app.route('/init')
 def init():
-    print("starting init in namenode")
+    print("starting INIT in NAMENODE")
 
     # initialize FS
     fs.__init__()
     live_datanodes = []
+    dead_datanodes = []
 
     # check whether nodes are alive
     # if yes format them
     for datanode in DATANODES:
-        response = requests.get(datanode + '/ping')
-        if response.status_code // 100 == 2:
-            live_datanodes.append(datanode)
+        # ping datanode
+        try:
+            response = requests.get(datanode + '/ping')
+        except Exception as e:
+            print(f"couldn't ping DATANODE {datanode} because of\n{e}")
+            # update dead datanodes
+            dead_datanodes.append(datanode)
+            continue
 
-            # formatting datanodes
-            response = requests.get(datanode + '/format')
+        # if ok
+        if response.status_code // 100 == 2:
+            # formatting datanode
+            try:
+                response = requests.get(datanode + '/format')
+            except Exception as e:
+                print(f"couldn't FORMAT DATANODE {datanode} because of\n{e}\nAppending to dead datanodes")
+                dead_datanodes.append(datanode)
+                continue
 
             if response.status_code // 100 != 2:
-                app.logger.info(f"couldn't format datanode: {datanode}")
+                print(f"couldn't FORMAT DATANODE {datanode}\nAppending to dead datanodes")
+                dead_datanodes.append(datanode)
+                app.logger.info(f"couldn't FORMAT DATANODE {datanode}")
 
             else:
+                # updating free space
                 spaces = response.json()
-                app.logger.info(f"{spaces}")
                 free = spaces['free']
                 fs.free_space = min(free, fs.free_space)
+                # updating live datanodes
+                live_datanodes.append(datanode)
 
         else:
-            print("couldn't ping that boi")
-            app.logger.info(f"couldn't ping datanode: {datanode}")
+            print(f"couldn't ping DATANODE {datanode}")
+            # app.logger.info(f"couldn't pind DATANODE {datanode}")
 
     # check whether the FS initialized successfully
     app.logger.info("checking len of live_datanodes")
+    print(f"LIVE DATANODES: {live_datanodes}")
+    print(f"DEAD DATANODES: {dead_datanodes}")
+    fs.dead_datanodes = dead_datanodes
+    fs.live_datanodes = live_datanodes
     if len(live_datanodes) > 0:
-        print(live_datanodes)
         app.logger.info(f"live datanodes: {live_datanodes}")
-        fs.live_datanodes = live_datanodes
         return jsonify({"free_space": fs.free_space})
     else:
-        return Response("couldn't initialize", 418)
+        return Response("couldn't INIT as no live datanodes", 418)
 
 
 @app.route('/delete', methods=['DELETE'])
@@ -199,11 +229,14 @@ def copy():
     filename = request.json['filename']
     dirname = request.json['dirname']
 
+    # node with the file
     original_node = fs.get_file(filename)
     if original_node:
         print(f"file {filename} found")
+        # node with the new dir
         new_node_par = fs.get_dir(dirname)
         if new_node_par:
+            # resolving name collision
             new_name = os.path.basename(filename) + '_copy'
             count = 1
             file = fs.get_file(new_name)
@@ -211,17 +244,20 @@ def copy():
                 new_name = new_name + str(count)
                 count += 1
                 file = fs.get_file(new_name)
+            # creating copy of the file
             file = fs.create_file(new_name, new_node_par, original_node.file['size'])
             print(f"file was copied under the filename {filename}")
             return jsonify({'original': original_node.file, 'copy': file})
         else:
             print("specified directory does not exist")
             return Response("specified directory does not exist", 404)
+    else:
+        return Response("file doesn't exist", 404)
 
 
 @app.route('/get', methods=['GET'])
 def get():
-    print("started getting the file in namenode")
+    print("started GETTING the file in NAMENODE")
     filename = request.json['filename']
     print(f"filename = {filename}")
 
@@ -233,11 +269,12 @@ def get():
 
     else:
         print("file doesn't exist")
-        Response("file doesn't exist", 404)
+        return Response("file doesn't exist", 404)
 
 
 @app.route('/create', methods=['POST'])
 def create():
+    print("started CREATING file")
     # obtain filename
     filename = request.json['filename']
     filesize = 0
@@ -246,12 +283,14 @@ def create():
 
     # check whether file already exists
     if fs.get_file(filename) or fs.get_dir(filename):
-        app.logger.info(f"file already exists {filename}")
-        return Response("", 409)
+        print(f"FILE {filename} already exists")
+        # app.logger.info(f"file already exists {filename}")
+        return Response("FAILED: file or dir with this name already exists", 409)
     # create file, return info about datanodes and id
     else:
-        app.logger.info(f"filesize: {filesize}   free_space:{fs.free_space}")
+        # app.logger.info(f"filesize: {filesize}   free_space:{fs.free_space}")
         if filesize > fs.free_space:  # check if there's available space
+            print("FAILED: not enough space")
             return Response("not enough space", 413)
         file_dir = os.path.dirname(filename)
         file_name = os.path.basename(filename)
@@ -260,7 +299,8 @@ def create():
             file = fs.create_file(file_name, file_parent, filesize)
             return jsonify({"file": file})
         else:
-            return Response('', 404)
+            # TODO write Response
+            return Response(f"FAILED: dir {file_dir} doesn't  exist", 404)
 
 
 @app.route('/mkdir', methods=['POST'])
@@ -269,17 +309,18 @@ def mkdir():
     dirname = request.json['dirname']
 
     if fs.get_file(dirname) or fs.get_dir(dirname):
-        return Response("", 409)
+        return Response("dir or file with such name exists", 409)
     else:
         # add directory to fs tree
         dir_parent = os.path.dirname(dirname)
         dir_name = os.path.basename(dirname)
         parent_node = fs.get_dir(dir_parent)
+        # TODO write Response
         if parent_node:
             fs.create_directory(dir_name, parent_node)
-            return Response("", 200)
+            return Response("ok", 200)
         else:
-            return Response('', 404)
+            return Response("path doesn't exist", 404)
 
 
 @app.route('/ls')
@@ -290,6 +331,11 @@ def ls():
     files = []
 
     dir_node = fs.get_dir(dirname)
+
+    # TODO write Response
+    if not dir_node:
+        return Response("dir doesn't exist", 404)
+
     for node in dir_node.children:
         # check whether file or directory
         if node.is_file:
@@ -320,7 +366,7 @@ def info():
     if node:
         return jsonify({'info': node.file})
     else:
-        return Response('', 404)
+        return Response('no such file found', 404)
 
 
 @app.route('/move', methods=['POST'])
@@ -330,20 +376,21 @@ def move():
     # get path
     path = request.json['path']
 
+    # TODO write Response
     file_node = fs.get_file(filename)
     if file_node:
         node = fs.get_dir(path)
         if node:
             if filename in [x.name for x in node.children]:
-                return Response('', 419)
+                return Response('file with such name already exists in this dir', 419)
             else:
                 file_node.parent = node
                 print(RenderTree(fs.root))
                 return Response('', 200)
         else:
-            return Response('', 404)
+            return Response('no such dir exists', 404)
     else:
-        return Response('', 404)
+        return Response('no such file exists', 404)
 
 
 

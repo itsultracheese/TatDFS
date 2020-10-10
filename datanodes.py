@@ -22,6 +22,7 @@ def format():
     Formats the contents of the datanode
     '''
     global CURRENT_DIR
+    print("started FORMATTING in DATANODE")
 
     # create root folder if it does not exist
     if not os.path.exists(CURRENT_DIR):
@@ -37,6 +38,7 @@ def format():
                 shutil.rmtree(path)
         except Exception as e:
             # if file/dir was not deleted write to log
+            print(f"FAILED to DELETE {path} because of\n{e}")
             app.logger.info(f'failed to delete {path}, reason: {e}')
 
     # obtain info about free space
@@ -82,7 +84,7 @@ def copy_existing_file():
         return Response("file was copied", 200)
     except Exception as e:
         print(f"file wasn't copied because of {e}")
-        return Response("file couldn't be copied", 419)
+        return Response(f"file wasn't copied because of {e}", 419)
 
 
 @app.route('/get-replica', methods=['POST'])
@@ -98,7 +100,11 @@ def get_replica():
 
     path = os.path.join(CURRENT_DIR, file_id)
 
-    response = requests.get(src + '/get', json={'file_id': file_id})
+    try:
+        response = requests.get(src + '/get', json={'file_id': file_id})
+    except Exception as e:
+        print(f"FAILED to get file from {src} due to {e}")
+        return Response("error in get", 400)
 
     if response.status_code // 100 == 2:
         print(f"file was acquired")
@@ -124,7 +130,11 @@ def copy_non_existing_file():
 
     path_copy = os.path.join(CURRENT_DIR, copy_id)
 
-    response = requests.get(src + '/get', json={'file_id': original_id})
+    try:
+        response = requests.get(src + '/get', json={'file_id': original_id})
+    except Exception as e:
+        print(f"FAILED to get file from {src} due to\n{e}")
+        return Response(f"FAILED to get file from {src} due to\n{e}")
 
     if response.status_code // 100 == 2:
         print(f"file was acquired")
@@ -157,7 +167,7 @@ def put_file():
     Put file to datanode
     '''
 
-    print("started uploading file")
+    print("started putting file")
     # obtain file from client
     file_id = [k for k in request.files.keys()][0]
     file = request.files[f'{file_id}']
@@ -166,11 +176,11 @@ def put_file():
         print(f"file: {file}")
         print(f"file id: {file_id}")
         file.save(os.path.join(CURRENT_DIR, str(file_id)))
-        return Response("", 200)
+        return Response("ok", 200)
     except Exception as e:
         # if not created append to log, response 400
-        app.logger.info(f"failed to upload file because of {e}")
-        return Response("", 400)
+        app.logger.info(f"FAILED to put file because of {e}")
+        return Response(f"FAILED to put file because of {e}", 400)
 
 
 @app.route("/create", methods=["POST"])
@@ -180,17 +190,15 @@ def create_file():
     '''
     # obtain file id from client
     print("started creating file")
-    print(request.json)
     file_id = request.json['file_id']
     try:
         # create file
-        print(file_id)
         open(CURRENT_DIR + '/' + str(file_id), 'a').close()
         return Response("", 200)
     except Exception as e:
         # if not created append to log, response 400
-        app.logger.info(f"failed to create file because of {e}")
-        return Response("", 400)
+        app.logger.info(f"failed to create file because of\n{e}")
+        return Response(f"failed to create file because of {e}", 400)
 
 
 if __name__ == '__main__':

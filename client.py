@@ -4,51 +4,66 @@ NAMENODE = "http://0.0.0.0:8080"
 CURRENT_DIR = "/"
 
 
-def show_help(*_):
-    print("""COMMANDS USAGE\n
-        NOTE: paths are resolved only with respect to current directory\n
-        ---------------------------------------------------------------\n
-        init                : initialize the distributed filesystem\n
-        touch <file>        : create an empty file\n
-        get <file>          : download file from the dfs\n
-        put <file> <dir>    : upload a file from the host to the dfs\n
-        rm <file>           : delete a file from the dfs\n
-        cp <file> <dir>     : copy a file to the other directory\n
-        mkdir <dir>         : initialize an empty directory\n
-        ls [dir]            : list the contents of the directory (or current directory if no arguments)\n
-        cd <dir>            : change directory\n
-        info <file>         : display information about the file\n
-        mv <file> <dir>     : move the file in the dfs to another location\n
-        rmdir <dir>         : delete directory (and its contents)\n
-        exit                : exit the DFS client
-        """)
-
-
 def mistake():
     print("cannot execute command, please verify that you are using it correctly")
 
 
-def init(*_):
+def show_help(*arguments):
+    if len(arguments) == 1:
+        print("""COMMANDS USAGE\n
+            NOTE: paths are resolved only with respect to current directory\n
+            ---------------------------------------------------------------\n
+            init                : initialize the distributed filesystem\n
+            touch <file>        : create an empty file\n
+            get <file>          : download file from the dfs\n
+            put <file> <dir>    : upload a file from the host to the dfs\n
+            rm <file>           : delete a file from the dfs\n
+            cp <file> <dir>     : copy a file to the other directory\n
+            mkdir <dir>         : initialize an empty directory\n
+            ls [dir]            : list the contents of the directory (or current directory if no arguments)\n
+            cd <dir>            : change directory\n
+            info <file>         : display information about the file\n
+            mv <file> <dir>     : move the file in the dfs to another location\n
+            rmdir <dir>         : delete directory (and its contents)\n
+            exit                : exit the DFS client
+            """)
+    else:
+        mistake()
+
+
+def init(*arguments):
     '''
     Initialize empty DFS
     '''
-    # ping name node
-    response = requests.get(NAMENODE + "/ping")
-    # check response
-    if response.status_code // 100 == 2:
-        print("connection to namenode was established")
 
-        # request namenode to initialize the DFS
-        response = requests.get(NAMENODE + "/init")
+    if len(arguments) == 1:
+        try:
+            # ping name node
+            response = requests.get(NAMENODE + "/ping")
+        except Exception as e:
+            print(f"couldn't establish connection to NAMENODE because of\n{e}")
+            return
+
         # check response
         if response.status_code // 100 == 2:
-            data = response.json()
-            print(f"filesystem initialized")
-            print(f"available space: {data['free_space'] // (2**20)} MB")
+            print("connection to NAMENODE was established")
+            try:
+                # request namenode to initialize the DFS
+                response = requests.get(NAMENODE + "/init")
+            except Exception as e:
+                print(f"FAILED NAMENODE while initializing filesystem\n{e}")
+                return
+            # check response
+            if response.status_code // 100 == 2:
+                data = response.json()
+                print(f"filesystem initialized")
+                print(f"available space: {data['free_space'] // (2**20)} MB")
+            else:
+                print(response.content.decode())
         else:
-            print("an error has occurred while initializing filesystem :(")
+            print("couldn't ping NAMENODE")
     else:
-        print("an error has occurred while connecting to namenode :(")
+        mistake()
 
 
 def create_file(*arguments):
@@ -60,24 +75,30 @@ def create_file(*arguments):
     if len(arguments) == 2:
         filename = arguments[1]
 
-        # obtaining the base name
-        #filename = os.path.basename(filename)
-
-        # request namenode to create file
-        response = requests.post(NAMENODE + "/create", json={"filename": filename, 'filesize': 0})
+        # request NAMENODE to create file
+        try:
+            response = requests.post(NAMENODE + "/create", json={"filename": filename, 'filesize': 0})
+        except Exception as e:
+            print(f"FAILED to CREATE FILE because of\n{e}")
+            return
 
         if response.status_code // 100 == 2:
             # receive file info from namenode
             file = response.json()["file"]
             # request each datanode to create a file
             for datanode in file['datanodes']:
-                resp = requests.post(datanode + "/create", json={"file_id": file['id']})
+                try:
+                    # requesting
+                    resp = requests.post(datanode + "/create", json={"file_id": file['id']})
+                except Exception as e:
+                    print(f"FAILED to CREATE file in {datanode} due to\n{e}")
+                    continue
                 if resp.status_code // 100 != 2:
-                    print(f"failed to create file in {datanode}")
-
-            print(f"FILE {filename} was created")
+                    print(response.content.decode())
+                else:
+                    print(f"FILE {filename} was created in {datanode}")
         else:
-            print(f"FILE {filename} already exists :(")
+            print(response.content.decode())
     else:
         mistake()
 
@@ -90,10 +111,12 @@ def get_file(*arguments):
 
     if len(arguments) == 2:
         filename = arguments[1]
-        # obtaining the base name
-        #filename = os.path.basename(filename)
 
-        response = requests.get(NAMENODE + "/get", json={"filename": filename})
+        try:
+            response = requests.get(NAMENODE + "/get", json={"filename": filename})
+        except Exception as e:
+            print(f"FAILED to GET file from NAMENODE due to\n{e}")
+            return
 
         if response.status_code // 100 == 2:
             # acquiring the file from the namenode
@@ -101,8 +124,14 @@ def get_file(*arguments):
             datanodes = file['datanodes']
             received = False
             for datanode in datanodes:
-                print(f"requesting the file")
-                response = requests.get(datanode + "/get", json={"file_id": file['id']})
+                print(f"requesting the file from DATANODE {datanode}")
+                # requesting
+                try:
+                    response = requests.get(datanode + "/get", json={"file_id": file['id']})
+                except Exception as e:
+                    print(f"FAILED to GET file from {datanode} due to\n{e}")
+                    continue
+
                 if response.status_code // 100 == 2:
                     print(f"file was acquired")
                     received = True
@@ -110,7 +139,7 @@ def get_file(*arguments):
                     open(filename, 'wb').write(response.content)
                     break
                 else:
-                    print(f"couldn't acquire the file from {datanode}")
+                    print(response.content.decode())
 
             if received:
                 print(f"the file {filename} was received")
@@ -118,7 +147,7 @@ def get_file(*arguments):
                 print("file wasn't received")
 
         else:
-            print(f"FILE {filename} doesn't exist in current dir")
+            print(response.content.decode())
     else:
         mistake()
 
@@ -134,34 +163,40 @@ def put_file(*arguments):
         local_filename = arguments[1]
         dfs_filename = arguments[2]
 
+        # obtaining file size in bytes
         try:
-            # obtaining the base names
-            #dfs_filename = os.path.basename(dfs_filename)
-
-            # obtaining file size in bytes
             filesize = os.stat(local_filename).st_size
+        except Exception as e:
+            print(f"FAILED to calculate the size due to\n{e}")
+            return
 
-            # request namenode to put file
+        # request namenode to put file
+        try:
             response = requests.post(NAMENODE + "/create", json={"filename": dfs_filename, "filesize": filesize})
+        except Exception as e:
+            print(f"FAILED to put file in NAMENODE due to\n{e}")
+            return
 
-            if response.status_code // 100 == 2:
-                # receive file info from namenode
-                file = response.json()["file"]
-                # request each datanode to create a file
-                for datanode in file['datanodes']:
-
+        if response.status_code // 100 == 2:
+            # receive file info from namenode
+            file = response.json()["file"]
+            # request each datanode to create a file
+            for datanode in file['datanodes']:
+                # requesting
+                try:
                     resp = requests.post(datanode + "/put",
                                          files={f"{file['id']}": open(local_filename, 'rb')})
-                    if resp.status_code // 100 != 2:
-                        print(f"failed to upload file to {datanode}")
+                except Exception as e:
+                    print(f"FAILED to put file in {datanode} due to\n{e}")
+                    continue
 
-                print(f"FILE {local_filename} was moved as {dfs_filename}")
-            elif response.status_code == 409:
-                print(f"FILE {dfs_filename} already exists :(")
-            else:
-                print(f"out of memory")
-        except Exception as e:
-            print(f"file {local_filename} does not exist")
+                if resp.status_code // 100 != 2:
+                    print(resp.content.decode())
+                else:
+                    print(f"FILE {local_filename} was put as {dfs_filename} in {datanode}")
+        else:
+            print(response.content.decode())
+
     else:
         mistake()
 
@@ -174,12 +209,12 @@ def delete_file(*arguments):
     '''
     if len(arguments) == 2:
         filename = arguments[1]
-        print(f"starting deleting file {filename}")
-        # obtaining the base names
-        #filename = os.path.basename(filename)
-
         # request namenode to delete file
-        response = requests.delete(NAMENODE + "/delete", json={"filename": filename})
+        try:
+            response = requests.delete(NAMENODE + "/delete", json={"filename": filename})
+        except Exception as e:
+            print(f"FAILED to REMOVE file from NAMENODE due to\n{e}")
+            return
 
         if response.status_code // 100 == 2:
             print("file was found in namenode")
@@ -190,16 +225,20 @@ def delete_file(*arguments):
             # removing file from datanodes
             for datanode in file['datanodes']:
                 print(f"sending delete request to datanode {datanode}")
-                response = requests.delete(datanode + "/delete", json={"file_id": file['id']})
+                try:
+                    response = requests.delete(datanode + "/delete", json={"file_id": file['id']})
+                except Exception as e:
+                    print(f"FAILED to REMOVE file from {datanode} due to\n{e}")
+                    continue
 
                 if response.status_code // 100 == 2:
                     print(f"file was deleted from datanode {datanode}")
                 else:
-                    print(f"file couldn't be deleted from datanode {datanode}")
-
-            print("file was deleted from dfs")
+                    print(f"FAILED file wasn't found in datanode {datanode}")
         else:
-            print(f"FILE {filename} doesn't exist")
+            print(response.content.decode())
+    else:
+        mistake()
 
 
 def copy_file(*arguments):
@@ -213,7 +252,12 @@ def copy_file(*arguments):
         filename = arguments[1]
         dirname = arguments[2]
         # request namenode to copy file
-        response = requests.post(NAMENODE + '/copy', json={'filename': filename, 'dirname': dirname})
+        try:
+            response = requests.post(NAMENODE + '/copy', json={'filename': filename, 'dirname': dirname})
+        except Exception as e:
+            print(f"FAILED to COPY in NAMENODE due to\n{e}")
+            return
+
         # check response
         if response.status_code // 100 == 2:
             print("namenode was updated")
@@ -226,8 +270,12 @@ def copy_file(*arguments):
                 print(f"started copying in {datanode_cp}")
                 if datanode_cp in original['datanodes']:
                     print("it already contains the file, started copying")
-                    response = requests.post(datanode_cp + "/copy/existing",
-                                             json={"original_id": original['id'], "copy_id": copy['id']})
+                    try:
+                        response = requests.post(datanode_cp + "/copy/existing",
+                                                 json={"original_id": original['id'], "copy_id": copy['id']})
+                    except Exception as e:
+                        print(f"FAILED to COPY file in {datanode_cp} due to \n{e}")
+                        continue
 
                     if response.status_code // 100 == 2:
                         print(f"file was successfully copied to {datanode_cp}")
@@ -237,19 +285,24 @@ def copy_file(*arguments):
                 else:
                     print("it doesn't contain the file, started copying")
                     for datanode_orig in original['datanodes']:
-                        response = requests.post(datanode_cp + "/copy/non-existing",
-                                                 json={"original_id": original['id'], "copy_id": copy['id'],
-                                                       "datanode": datanode_orig})
+                        try:
+                            response = requests.post(datanode_cp + "/copy/non-existing",
+                                                     json={"original_id": original['id'], "copy_id": copy['id'],
+                                                           "datanode": datanode_orig})
+                        except Exception as e:
+                            print(f"FAILED to COPY file in {datanode_cp} with {datanode_orig} due to \n{e}")
+                            continue
+
                         if response.status_code // 100 == 2:
                             print(f"file was copied from {datanode_orig}")
                             break
                         else:
-                            print(f"file couldn't be copied from {datanode_orig}")
+                            print(response.content.decode())
 
             print("finished copying")
 
         else:
-            print(f"NAMENODE ERROR {filename} cannot be moved to {dirname}")
+            print(response.content.decode())
 
     else:
         mistake()
@@ -265,7 +318,11 @@ def delete_directory(*arguments):
     if len(arguments) == 2:
         dirname = arguments[1]
 
-        response = requests.delete(NAMENODE + "/delete/dir-notsure", json={'dirname': dirname})
+        try:
+            response = requests.delete(NAMENODE + "/delete/dir-notsure", json={'dirname': dirname})
+        except Exception as e:
+            print(f"FAILED to rmdir in NAMENODE due to\n{e}")
+            return
 
         if response.status_code // 100 == 2:
             empty = response.json()['empty']
@@ -276,7 +333,12 @@ def delete_directory(*arguments):
                 while True:
                     delete = input("are you sure that you want do delete all contents? [y/n]")
                     if delete == 'y' or delete == 'Y' or delete == 'yes' or delete == 'Yes':
-                        response = requests.delete(NAMENODE + "/delete/dir-sure", json={'dirname': dirname})
+                        try:
+                            response = requests.delete(NAMENODE + "/delete/dir-sure", json={'dirname': dirname})
+                        except Exception as e:
+                            print(f"FAILED to rmdir in NAMENODE due to\n{e}")
+                            return
+
                         # delete from datanodes
                         if response.status_code // 100 == 2:
                             files = response.json()['files']
@@ -284,20 +346,25 @@ def delete_directory(*arguments):
                                 datanodes = file['datanodes']
                                 id = file['id']
                                 for datanode in datanodes:
-                                    response = requests.delete(datanode + '/delete', json={'file_id': id})
+                                    try:
+                                        response = requests.delete(datanode + '/delete', json={'file_id': id})
+                                    except Exception as e:
+                                        print(f"FAILED to REMOVE file {file} from {datanode} due to\n{e}")
+                                        continue
+
                                     if response.status_code // 100 == 2:
                                         print(f"{file} was deleted from {datanode}")
                                     else:
-                                        print(f"{file} was NOT deleted from {datanode}")
+                                        print(response.content.decode())
                         else:
-                            print("couldn't delete directory")
+                            print(response.content.decode())
 
                         break
                     elif delete == 'n' or delete == 'N' or delete == 'no' or delete == 'No':
                         print("not deleting")
                         break
         else:
-            print("NAMENODE ERROR ")
+            print(response.content.decode())
 
     else:
         mistake()
@@ -311,12 +378,17 @@ def make_directory(*arguments):
     if len(arguments) == 2:
         dirname = arguments[1]
         # request namenode to create directory
-        response = requests.post(NAMENODE + '/mkdir', json={'dirname': dirname})
+        try:
+            response = requests.post(NAMENODE + '/mkdir', json={'dirname': dirname})
+        except Exception as e:
+            print(f"FAILED to mkdir in NAMENODE due to\n{e}")
+            return
+
         # check response
         if response.status_code // 100 == 2:
             print(f"directory {dirname} successfully created")
         else:
-            print(f"directory {dirname} already exists")
+            print(response.content.decode())
     else:
         mistake()
 
@@ -331,7 +403,12 @@ def read_directory(*arguments):
         if len(arguments) == 2:
             dirname = arguments[1]
         # request namenode for the file list
-        response = requests.get(NAMENODE + '/ls', json={'dirname': dirname})
+        try:
+            response = requests.get(NAMENODE + '/ls', json={'dirname': dirname})
+        except Exception as e:
+            print(f"FAILED to READ dir from NAMENODE due to\n{e}")
+            return
+
         # check response
         if response.status_code // 100 == 2:
             # print contents
@@ -344,7 +421,7 @@ def read_directory(*arguments):
             for file in files:
                 print(file)
         else:
-            print("failed to list contents of directory")
+            print(response.content.decode())
     else:
         mistake()
 
@@ -358,7 +435,10 @@ def change_directory(*arguments):
 
     if len(arguments) == 2:
         dirname = arguments[1]
-        response = requests.post(NAMENODE + '/cd', json={'dirname': dirname})
+        try:
+            response = requests.post(NAMENODE + '/cd', json={'dirname': dirname})
+        except Exception as e:
+            print(f"FAILED to ls in NAMENODE due to\n{e}")
         # check response
         if response.status_code // 100 == 2:
             # obtain the new working directory
@@ -381,13 +461,18 @@ def file_info(*arguments):
     '''
     if len(arguments) == 2:
         filename = arguments[1]
-        response = requests.post(NAMENODE + '/info', json={'filename': filename})
+        try:
+            response = requests.post(NAMENODE + '/info', json={'filename': filename})
+        except Exception as e:
+            print(f"FAILED to get info from NAMENODE due to\n{e}")
+            return
+
         # check response
         if response.status_code // 100 == 2:
             file = response.json()['info']
             print(f"FILE {filename}\nSIZE {file['size'] / 2**10} KB\nCREATED {file['created_date']}\nDATANODES {file['datanodes']}")
         else:
-            print(f"file {filename} does not exist")
+            print(response.content.decode())
     else:
         mistake()
 
@@ -401,7 +486,12 @@ def move_file(*arguments):
     if len(arguments) == 3:
         filename = arguments[1]
         path = arguments[2]
-        response = requests.post(NAMENODE + '/move', json={'filename': filename, 'path': path})
+        try:
+            response = requests.post(NAMENODE + '/move', json={'filename': filename, 'path': path})
+        except Exception as e:
+            print(f"FAILED to MOVE file in NAMENODE due to\n{e}")
+            return
+
         # check response
         if response.status_code // 100 == 2:
             print(f"file {filename} was successfully moved to {path}")
@@ -457,7 +547,7 @@ commands = {
 
 if __name__ == "__main__":
     print("TatDFS client successfully started\nHere is a small help on how to use it")
-    show_help()
+    show_help([1])
     while True:
         args = input("TatDFS𓆏 " + CURRENT_DIR + " $ ").split()
         if len(args) == 0:
