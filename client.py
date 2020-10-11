@@ -16,14 +16,14 @@ def show_help(*arguments):
             init                : initialize the distributed filesystem\n
             touch <file>        : create an empty file\n
             get <file>          : download file from the dfs\n
-            put <file> <dir>    : upload a file from the host to the dfs\n
+            put <file> <path>   : upload a file from the host to the dfs directory under the same name (if ends with /) or under a new name\n
             rm <file>           : delete a file from the dfs\n
-            cp <file> <dir>     : copy a file to the other directory\n
+            cp <file> <path>    : copy a file to the other directory (if ends with /) or under a new name\n
             mkdir <dir>         : initialize an empty directory\n
             ls [dir]            : list the contents of the directory (or current directory if no arguments)\n
             cd <dir>            : change directory\n
             info <file>         : display information about the file\n
-            mv <file> <dir>     : move the file in the dfs to another location\n
+            mv <file> <path>    : move the file in the dfs to the other directory (if ends with /) or under a new name\n
             rmdir <dir>         : delete directory (and its contents)\n
             exit                : exit the DFS client
             """)
@@ -35,6 +35,7 @@ def init(*arguments):
     '''
     Initialize empty DFS
     '''
+    global CURRENT_DIR
 
     if len(arguments) == 1:
         try:
@@ -57,6 +58,7 @@ def init(*arguments):
             if response.status_code // 100 == 2:
                 data = response.json()
                 print(f"filesystem initialized")
+                CURRENT_DIR = '/'
                 print(f"available space: {data['free_space'] // (2**20)} MB")
             else:
                 print(response.content.decode())
@@ -88,7 +90,7 @@ def create_file(*arguments):
             # request each datanode to create a file
             for datanode in file['datanodes']:
                 try:
-                    # requesting
+                    # requesting datanode for a file creation
                     resp = requests.post(datanode + "/create", json={"file_id": file['id']})
                 except Exception as e:
                     print(f"FAILED to CREATE file in {datanode} due to\n{e}")
@@ -112,6 +114,7 @@ def get_file(*arguments):
     if len(arguments) == 2:
         filename = arguments[1]
 
+        # request namenode to locate a file
         try:
             response = requests.get(NAMENODE + "/get", json={"filename": filename})
         except Exception as e:
@@ -119,13 +122,13 @@ def get_file(*arguments):
             return
 
         if response.status_code // 100 == 2:
-            # acquiring the file from the namenode
+            # acquiring the file from the datanodes
             file = response.json()['file']
             datanodes = file['datanodes']
             received = False
             for datanode in datanodes:
                 print(f"requesting the file from DATANODE {datanode}")
-                # requesting
+                # requesting datanode for a file
                 try:
                     response = requests.get(datanode + "/get", json={"file_id": file['id']})
                 except Exception as e:
@@ -170,9 +173,13 @@ def put_file(*arguments):
             print(f"FAILED to calculate the size due to\n{e}")
             return
 
+        # resolve filename
+        if dfs_filename[-1] == '/':
+            dfs_filename = dfs_filename + os.path.basename(local_filename)
+
         # request namenode to put file
         try:
-            response = requests.post(NAMENODE + "/create", json={"filename": dfs_filename, "filesize": filesize})
+            response = requests.post(NAMENODE + "/create", json={"filename": dfs_filename, "filesize": filesize, "put": True})
         except Exception as e:
             print(f"FAILED to put file in NAMENODE due to\n{e}")
             return
@@ -226,6 +233,7 @@ def delete_file(*arguments):
             for datanode in file['datanodes']:
                 print(f"sending delete request to datanode {datanode}")
                 try:
+                    # request datanode to remove the file
                     response = requests.delete(datanode + "/delete", json={"file_id": file['id']})
                 except Exception as e:
                     print(f"FAILED to REMOVE file from {datanode} due to\n{e}")
@@ -267,10 +275,12 @@ def copy_file(*arguments):
             print(f"copy file: {copy}")
 
             for datanode_cp in copy['datanodes']:
+                # creating a copy of file to the given datanode
                 print(f"started copying in {datanode_cp}")
                 if datanode_cp in original['datanodes']:
                     print("it already contains the file, started copying")
                     try:
+                        # request datanode to copy file inside it
                         response = requests.post(datanode_cp + "/copy/existing",
                                                  json={"original_id": original['id'], "copy_id": copy['id']})
                     except Exception as e:
@@ -286,6 +296,7 @@ def copy_file(*arguments):
                     print("it doesn't contain the file, started copying")
                     for datanode_orig in original['datanodes']:
                         try:
+                            # request to get a copy from the other datanode
                             response = requests.post(datanode_cp + "/copy/non-existing",
                                                      json={"original_id": original['id'], "copy_id": copy['id'],
                                                            "datanode": datanode_orig})
@@ -318,6 +329,7 @@ def delete_directory(*arguments):
     if len(arguments) == 2:
         dirname = arguments[1]
 
+        # request to delete if contains no files/directories inside
         try:
             response = requests.delete(NAMENODE + "/delete/dir-notsure", json={'dirname': dirname})
         except Exception as e:
@@ -331,15 +343,17 @@ def delete_directory(*arguments):
             else:
                 print("dir is not empty")
                 while True:
+                    # check whether the client wants to delete the directory
                     delete = input("are you sure that you want do delete all contents? [y/n]")
                     if delete == 'y' or delete == 'Y' or delete == 'yes' or delete == 'Yes':
                         try:
+                            # delete directory, get location of its files
                             response = requests.delete(NAMENODE + "/delete/dir-sure", json={'dirname': dirname})
                         except Exception as e:
                             print(f"FAILED to rmdir in NAMENODE due to\n{e}")
                             return
 
-                        # delete from datanodes
+                        # delete all files from datanodes
                         if response.status_code // 100 == 2:
                             files = response.json()['files']
                             for file in files:
@@ -486,6 +500,11 @@ def move_file(*arguments):
     if len(arguments) == 3:
         filename = arguments[1]
         path = arguments[2]
+
+        # resolve filename
+        if path[-1] == '/':
+            path = path + os.path.basename(filename)
+
         try:
             response = requests.post(NAMENODE + '/move', json={'filename': filename, 'path': path})
         except Exception as e:
@@ -495,12 +514,8 @@ def move_file(*arguments):
         # check response
         if response.status_code // 100 == 2:
             print(f"file {filename} was successfully moved to {path}")
-        elif response.status_code == 418:
-            print("you cannot move file into file")
-        elif response.status_code == 419:
-            print(f"file {filename} already exists in {path}")
         else:
-            print(f"file {filename} cannot be moved to {path}")
+            print(response.content.decode())
     else:
         mistake()
 
@@ -522,32 +537,19 @@ commands = {
     "rmdir": delete_directory
 }
 
-# init()
-# create_file("zhopa_1")
-# put_file('test2.txt', 'test.txt')
-# make_directory("dir1")
-# make_directory("dir2")
-# change_directory('dir2')
-# create_file('file4')
-# read_directory()
-# move_file('file4', '/dir1')
-# read_directory()
-# change_directory('..')
-# change_directory("dir1")
-# read_directory()
-# file_info('file4')
-# read_directory()
-# delete_file('file4')
-# change_directory("..")
-# move_file("test.txt", "dir2")
-# change_directory("dir2")
-# get_file("test.txt")
-# delete_file("test.txt")
-# read_directory()
-
 if __name__ == "__main__":
     print("TatDFS client successfully started\nHere is a small help on how to use it")
     show_help([1])
+
+    try:
+        response = requests.get(NAMENODE + '/curdir')
+        if response.status_code // 100 == 2:
+            CURRENT_DIR = response.json()['current_dir']
+        else:
+            print("connection to namenode cannot be established")
+    except Exception as e:
+        print("connection to namenode cannot be established")
+
     while True:
         args = input("TatDFS𓆏 " + CURRENT_DIR + " $ ").split()
         if len(args) == 0:

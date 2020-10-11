@@ -50,7 +50,15 @@ def heartbeat():
 
         # resurrecting nodes
         for node in new_alive:
-            fs.protocol_lazarus(node)
+            # request the datanode to format
+            response = requests.get(datanode + '/format')
+
+            if response.status_code // 100 != 2:
+                print(f"couldn't resurrect datanode: {datanode}")
+            else:
+                fs.live_datanodes.append(datanode)
+                fs.dead_datanodes.remove(datanode)
+                fs.datanodes_files[datanode] = []
 
         # getting the up to date list of live and dead datanodes
         for node in new_dead:
@@ -64,6 +72,7 @@ def heartbeat():
 
         print(f"needs_replica: {fs.needs_replica}")
         needs_repl = []
+        # try to replicate files that needs replication
         for node in fs.needs_replica.keys():
             file = node.file
             needed = fs.replication - len(file['datanodes'])
@@ -102,6 +111,11 @@ def heartbeat():
 @app.route('/ping')
 def ping():
     return Response("ping from namenode", 200)
+
+
+@app.route('/curdir')
+def curdir():
+    return jsonify({'current_dir': fs.get_current_dirname()})
 
 
 @app.route('/init')
@@ -162,7 +176,7 @@ def init():
         app.logger.info(f"live datanodes: {live_datanodes}")
         return jsonify({"free_space": fs.free_space})
     else:
-        return Response("couldn't INIT as no live datanodes", 418)
+        return Response("FAILED: couldn't INIT as no live datanodes", 418)
 
 
 @app.route('/delete', methods=['DELETE'])
@@ -172,6 +186,8 @@ def delete():
     filename = request.json['filename']
 
     print(f"filename = {filename}")
+
+    # try to obtain file from the filesystem
     node = fs.get_file(filename)
     if node:
         print("file exists")
@@ -180,7 +196,7 @@ def delete():
         return jsonify({"file": file})
     else:
         print("file doesn't exist")
-        return Response("file doesn't exist", 404)
+        return Response("FAILED: file doesn't exist", 404)
 
 
 @app.route('/delete/dir-notsure', methods=['DELETE'])
@@ -190,9 +206,11 @@ def delete_dir_notsure():
 
     print(f"dirname: {dirname}")
 
+    # try to obtain directory from the filesystem
     dir_node = fs.get_dir(dirname)
     if dir_node:
         children = [x for x in dir_node.children]
+        # check if directory contains something
         if len(children) == 0:
             dir_node.parent = None
             print("directory empty, was removed successfully")
@@ -202,7 +220,7 @@ def delete_dir_notsure():
             return jsonify({"empty": False})
     else:
         print("dir doesn't exist")
-        return Response("dir doesn't exist", 404)
+        return Response("FAILED: dir doesn't exist", 404)
 
 
 @app.route('/delete/dir-sure', methods=['DELETE'])
@@ -212,15 +230,18 @@ def delete_dir_sure():
 
     print(f"dirname: {dirname}")
 
+    # obtain the directory from the filesystem
     dir_node = fs.get_dir(dirname)
     if dir_node:
+        # get all files in the specified directory
         files = fs.get_all_files_rec(dir_node)
+        # remove directory and all its children from the filesystem
         dir_node.parent = None
         return jsonify({"files": files})
 
     else:
         print("dir doesn't exist")
-        return Response("dir doesn't exist", 404)
+        return Response("FAILED: dir doesn't exist", 404)
 
 
 @app.route('/copy', methods=['POST'])
@@ -234,25 +255,39 @@ def copy():
     if original_node:
         print(f"file {filename} found")
         # node with the new dir
-        new_node_par = fs.get_dir(dirname)
-        if new_node_par:
-            # resolving name collision
-            new_name = os.path.basename(filename) + '_copy'
-            count = 1
-            file = fs.get_file(new_name)
-            while file:
-                new_name = new_name + str(count)
-                count += 1
+        if dirname[-1] == '/':
+            new_node_par = fs.get_dir(dirname)
+            if new_node_par:
+                # resolving name collision
+                new_name = os.path.basename(filename) + '_copy'
+                count = 1
                 file = fs.get_file(new_name)
-            # creating copy of the file
-            file = fs.create_file(new_name, new_node_par, original_node.file['size'])
-            print(f"file was copied under the filename {filename}")
-            return jsonify({'original': original_node.file, 'copy': file})
+                while file:
+                    new_name = new_name + str(count)
+                    count += 1
+                    file = fs.get_file(new_name)
+                # creating copy of the file
+                file = fs.create_file(new_name, new_node_par, original_node.file['size'])
+                print(f"file was copied under the filename {filename}")
+                return jsonify({'original': original_node.file, 'copy': file})
         else:
-            print("specified directory does not exist")
-            return Response("specified directory does not exist", 404)
+            dir_name = os.path.dirname(dirname)
+            file_name = os.path.basename(dirname)
+            file = fs.get_file(dirname)
+            if file or fs.get_dir(dirname):
+                print("specified file already exists")
+                return Response("FAILED: specified file already exists", 404)
+            else:
+                parent_dir = fs.get_dir(dir_name)
+                if parent_dir:
+                    file = fs.create_file(file_name, parent_dir, original_node.file['size'])
+                    print(f"file was copied under the filename {filename}")
+                    return jsonify({'original': original_node.file, 'copy': file})
+                else:
+                    print("specified directory does not exist")
+                    return Response("FAILED: specified directory does not exist", 404)
     else:
-        return Response("file doesn't exist", 404)
+        return Response("FAILED: file doesn't exist", 404)
 
 
 @app.route('/get', methods=['GET'])
@@ -269,7 +304,7 @@ def get():
 
     else:
         print("file doesn't exist")
-        return Response("file doesn't exist", 404)
+        return Response("FAILED: file doesn't exist", 404)
 
 
 @app.route('/create', methods=['POST'])
@@ -292,15 +327,18 @@ def create():
         if filesize > fs.free_space:  # check if there's available space
             print("FAILED: not enough space")
             return Response("not enough space", 413)
-        file_dir = os.path.dirname(filename)
-        file_name = os.path.basename(filename)
-        file_parent = fs.get_dir(file_dir)
-        if file_parent:
-            file = fs.create_file(file_name, file_parent, filesize)
-            return jsonify({"file": file})
         else:
-            # TODO write Response
-            return Response(f"FAILED: dir {file_dir} doesn't  exist", 404)
+            file_dir = os.path.dirname(filename)
+            file_name = os.path.basename(filename)
+            file_parent = fs.get_dir(file_dir)
+            if file_parent:
+                if len(file_name) < 1:
+                    return Response("FAILED: filename cannot be empty", 418)
+                else:
+                    file = fs.create_file(file_name, file_parent, filesize)
+                    return jsonify({"file": file})
+            else:
+                return Response(f"FAILED: dir {file_dir} doesn't  exist", 404)
 
 
 @app.route('/mkdir', methods=['POST'])
@@ -309,18 +347,18 @@ def mkdir():
     dirname = request.json['dirname']
 
     if fs.get_file(dirname) or fs.get_dir(dirname):
-        return Response("dir or file with such name exists", 409)
+        return Response("FAILED: dir or file with such name exists", 409)
     else:
         # add directory to fs tree
         dir_parent = os.path.dirname(dirname)
         dir_name = os.path.basename(dirname)
         parent_node = fs.get_dir(dir_parent)
-        # TODO write Response
+
         if parent_node:
             fs.create_directory(dir_name, parent_node)
             return Response("ok", 200)
         else:
-            return Response("path doesn't exist", 404)
+            return Response(f"FAILED: specified path {dir_parent} does not exist", 404)
 
 
 @app.route('/ls')
@@ -330,11 +368,11 @@ def ls():
     dirs = []
     files = []
 
+    # get directory from the dilesystem
     dir_node = fs.get_dir(dirname)
 
-    # TODO write Response
     if not dir_node:
-        return Response("dir doesn't exist", 404)
+        return Response(f"FAILED: specified directory {dirname} does not exist", 404)
 
     for node in dir_node.children:
         # check whether file or directory
@@ -350,23 +388,26 @@ def cd():
     # get directory name
     dirname = request.json['dirname']
 
+    # get the directory from the filesystem
     node = fs.get_dir(dirname)
     if node:
+        # change the current directory to the obtained one
         fs.cur_node = node
         return jsonify({'dirname': fs.cur_node.name, 'cur_dir': fs.get_current_dirname()})
     else:
-        return Response('', 404)
+        return Response(f'FAILED: specified directory {dirname} does not exist', 404)
 
 
 @app.route('/info', methods=['POST'])
 def info():
     # get file name
     filename = request.json['filename']
+    # obtain the file from the filesystem
     node = fs.get_file(filename)
     if node:
         return jsonify({'info': node.file})
     else:
-        return Response('no such file found', 404)
+        return Response(f'FAILED: file {filename} not found', 404)
 
 
 @app.route('/move', methods=['POST'])
@@ -376,22 +417,32 @@ def move():
     # get path
     path = request.json['path']
 
-    # TODO write Response
+    # obtain file from the filesystem
     file_node = fs.get_file(filename)
     if file_node:
-        node = fs.get_dir(path)
+        # resolve filename
+        dir_name = ''
+        file_name = ''
+        if path[-1] == '/':
+            dir_name = path
+            file_name = os.path.basename(filename)
+        else:
+            dir_name = os.path.dirname(path)
+            file_name = os.path.basename(path)
+        # obtain the directory where to move
+        node = fs.get_dir(dir_name)
         if node:
-            if filename in [x.name for x in node.children]:
-                return Response('file with such name already exists in this dir', 419)
+            if file_name in [x.name for x in node.children]:
+                return Response(f'FAILED: file {filename} already exists in this dir', 419)
             else:
+                # move the file in a filesystem
                 file_node.parent = node
-                print(RenderTree(fs.root))
+                file_node.name = file_name
                 return Response('', 200)
         else:
-            return Response('no such dir exists', 404)
+            return Response(f'FAILED: specified path {dir_name} does not exist', 404)
     else:
-        return Response('no such file exists', 404)
-
+        return Response(f'FAILED: file {filename} could not be found', 404)
 
 
 if __name__ == '__main__':

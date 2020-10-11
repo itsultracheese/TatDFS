@@ -61,7 +61,7 @@ class FileSystem:
 
     def choose_datanodes(self, n=None, exclude=None):
         '''
-
+        Choose datanodes to store file
         :param n: number of datanodes to return, equals to self.replication if not stated
         :param exclude: listed datanodes won't present in the returned list
         :return: a list of datanodes of size min(n, len(live_datanodes))
@@ -78,6 +78,13 @@ class FileSystem:
             return random.sample(self.live_datanodes, min(amount, len(self.live_datanodes)))
 
     def create_file(self, filename, parent_node, filesize=0):
+        '''
+        Create a new file in a given parent node
+        :param filename: name of the file to create
+        :param parent_node: node of the parent directory of the file
+        :param filesize: size of the file to store, default 0
+        :return: file information
+        '''
         # choose datanodes for storing and replicating
         datanodes = self.choose_datanodes()
         # create file with info
@@ -98,23 +105,42 @@ class FileSystem:
         return file
 
     def delete_file(self, node):
+        '''
+        Delete file from the filesystem
+        :param node: node which to delete
+        :return: info about deleted file
+        '''
+        # obtain the file info
         file = node.file
+        # update free space
         self.free_space += file['size']
         id = file['id']
         datanodes = file['datanodes']
+        # update info for each datanode
         for datanode in datanodes:
             try:
                 self.datanodes_files[datanode].remove(id)
             except Exception as e:
                 print(f"file with id {id} not found in {datanode}")
+        # remove from fs
         node.parent = None
         self.update_needs_replica(node, remove=True)
         return file
 
     def create_directory(self, dirname, parent_dir):
+        '''
+        Create a child directory
+        :param dirname: directory name to create
+        :param parent_dir: parent directory node
+        '''
         node = Node(dirname, parent=parent_dir, is_file=False)
 
     def get_all_files_rec(self, node):
+        '''
+        Obtain all files stored under a directory
+        :param node: node of the directory
+        :return: array of file infos
+        '''
         result = []
         for child in node.children:
             if child.is_file:
@@ -130,6 +156,7 @@ class FileSystem:
         :param filename: path to file relative to the current node
         :return: node with the given file or None
         '''
+        # resolve the name
         if filename[0] == '/':
             filename = '/root' + filename
         r = Resolver("name")
@@ -151,6 +178,7 @@ class FileSystem:
         :param dirname: path to direcroty relative to the current node
         :return: node with the given directory or None
         '''
+        # resolve the name
         if len(dirname) >= 1:
             if dirname[0] == '/':
                 dirname = '/root' + dirname
@@ -175,11 +203,13 @@ class FileSystem:
         :return: node
         '''
 
+        # base case
         if node.is_file:
             if node.file['id'] == id:
                 return node
             else:
                 return None
+        # iterate through all children
         else:
             for child in node.children:
                 result = self.get_filenode_by_id(child, id)
@@ -187,21 +217,6 @@ class FileSystem:
                     return result
                     break
         return None
-
-    def protocol_lazarus(self, datanode):
-        '''
-        Resurrection of the node
-        :param node:
-        '''
-
-        response = requests.get(datanode + '/format')
-
-        if response.status_code // 100 != 2:
-            print(f"couldn't resurrect datanode: {datanode}")
-        else:
-            fs.live_datanodes.append(datanode)
-            fs.dead_datanodes.remove(datanode)
-            fs.datanodes_files[datanode] = []
 
     def replicate_on_dead(self, dead_datanode):
         '''
@@ -223,6 +238,7 @@ class FileSystem:
             new_datanodes = self.choose_datanodes(n=1, exclude=file['datanodes'])  # acquiring new datanode
             print(f"\tnew_datanodes: {new_datanodes}")
             if len(new_datanodes) > 0:
+                # replicate the file
                 print("\tavailable datanode was found")
                 new_datanode = new_datanodes[0]
                 for datanode in file['datanodes']:
@@ -242,7 +258,6 @@ class FileSystem:
                         break
                     else:
                         print(f"\t\tfile was NOT replicated")
-
 
             file['datanodes'] += new_datanodes  # updating the list of datanodes of the file
             cur_node.file = file
