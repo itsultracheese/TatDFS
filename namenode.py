@@ -51,14 +51,14 @@ def heartbeat():
         # resurrecting nodes
         for node in new_alive:
             # request the datanode to format
-            response = requests.get(datanode + '/format')
+            response = requests.get(node + '/format')
 
             if response.status_code // 100 != 2:
-                print(f"couldn't resurrect datanode: {datanode}")
+                print(f"couldn't resurrect datanode: {node}")
             else:
-                fs.live_datanodes.append(datanode)
-                fs.dead_datanodes.remove(datanode)
-                fs.datanodes_files[datanode] = []
+                fs.live_datanodes.append(node)
+                fs.dead_datanodes.remove(node)
+                fs.datanodes_files[node] = []
 
         # getting the up to date list of live and dead datanodes
         for node in new_dead:
