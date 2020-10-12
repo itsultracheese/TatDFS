@@ -4,22 +4,34 @@ Kamaliev Kamil, DS-02
 Miftahova Amina, DS-01
 
 ## How to Start
-in `namenode.py`
+Please, make sure to run datanodes first and then the namenode. 
+During the first connection as a client, execute `init` command.
+
+In `namenode.py`
 
 List the addresses of datanodes
 ```
 DATANODES = ["http://0.0.0.0:8085", "http://0.0.0.0:8086", "http://0.0.0.0:8087"]
 ```
 
-to run the namenode image, use the following command
+To run the namenode image, use the following command
 ```
 docker run -p 8080:8080 tootiredone/namenode
 ```
 
-to run the datanode image, use the following command
+Or just use
+```
+python3 namenode.py
+```
+
+
+Notice that in namenode image, `DATANODES` set to be equal to our aws instances with their ips in vpc bein `10.0.15.11`, `10.0.15.12`, `10.0.15.13`
+
+To run the datanode image, use the following command
 ```
 docker run -p 8085:8085 -v datanode:/app tootiredone/datanode
 ```
+
 
 ## Architecture
 ![](https://i.imgur.com/j6acOnD.png)
@@ -229,5 +241,7 @@ The most part of the code was written from the 1 laptop with pair-programming pr
 ## Links to DockerHub
 
 [Namenode image](https://hub.docker.com/repository/docker/tootiredone/namenode)
-
 [Datanode image](https://hub.docker.com/repository/docker/tootiredone/datanode)
+
+## Link to GitHub
+https://github.com/noteisenheim/TatDFS
