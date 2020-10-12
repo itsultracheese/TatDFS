@@ -3,6 +3,24 @@ Kamaliev Kamil, DS-02
 
 Miftahova Amina, DS-01
 
+## How to Start
+in `namenode.py`
+
+List the addresses of datanodes
+```
+DATANODES = ["http://0.0.0.0:8085", "http://0.0.0.0:8086", "http://0.0.0.0:8087"]
+```
+
+to run the namenode image, use the following command
+```
+docker run -p 8080:8080 tootiredone/namenode
+```
+
+to run the datanode image, use the following command
+```
+docker run -p 8085:8085 -v datanode:/app tootiredone/datanode
+```
+
 ## Architecture
 ![](https://i.imgur.com/j6acOnD.png)
 ### Client
